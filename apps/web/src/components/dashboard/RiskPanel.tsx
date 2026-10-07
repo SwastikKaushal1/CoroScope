@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAND } from "@/config/brand";
 import { ARTERIES } from "@/config/arteries";
 import { riskColorHex, riskLevel } from "@/lib/riskColor";
 import { useRiskStore } from "@/store/useRiskStore";
@@ -23,7 +24,7 @@ export default function RiskPanel() {
   return (
     <aside className="space-y-6 overflow-y-auto border-t border-white/10 bg-slate-950/80 p-5 lg:border-l lg:border-t-0">
       <header>
-        <h1 className="text-lg font-semibold tracking-tight">CardioMap 3D</h1>
+        <h1 className="text-lg font-semibold tracking-tight">{BRAND}</h1>
         <p className="text-sm text-slate-400">Set vessel risk manually to preview the 3D colour mapping.</p>
       </header>
 

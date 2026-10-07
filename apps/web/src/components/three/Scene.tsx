@@ -1,11 +1,95 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, Lightformer, Loader, OrbitControls } from "@react-three/drei";
 import { useRiskStore } from "@/store/useRiskStore";
+import { ARTERIES } from "@/config/arteries";
+import { registerCapture } from "@/lib/snapshot";
 import Heart from "./Heart";
+
+/**
+ * Renders nothing. Registers a function that photographs the current 3D view
+ * (same angle the user is looking at) for the PDF report. The transparent canvas is
+ * composited onto the same dark gradient as the on-screen backdrop and downscaled.
+ */
+function CaptureBridge() {
+  const { gl, scene, camera } = useThree();
+  useEffect(
+    () =>
+      registerCapture(() => {
+        gl.render(scene, camera); // render right before reading, so the buffer is not blank
+        const src = gl.domElement;
+        const k = Math.min(1, 900 / src.width);
+        const w = Math.round(src.width * k);
+        const h = Math.round(src.height * k);
+        const out = document.createElement("canvas");
+        out.width = w;
+        out.height = h;
+        const ctx = out.getContext("2d");
+        if (!ctx) return null;
+        const g = ctx.createRadialGradient(w / 2, h * 0.42, 0, w / 2, h * 0.42, Math.max(w, h) * 0.7);
+        g.addColorStop(0, "#1c2a44");
+        g.addColorStop(0.7, "#0a1020");
+        g.addColorStop(1, "#060912");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(src, 0, 0, w, h);
+        return out.toDataURL("image/jpeg", 0.88);
+      }),
+    [gl, scene, camera]
+  );
+  return null;
+}
+
+/**
+ * Renders nothing. When a vessel is selected, swings the camera round (about the vertical
+ * axis, same distance and height) so that vessel faces the viewer. Stops the moment the
+ * user grabs the heart themselves.
+ */
+function CameraRig() {
+  const selected = useRiskStore((s) => s.selected);
+  const camera = useThree((s) => s.camera);
+  const controls = useThree((s) => s.controls) as unknown as (THREE.EventDispatcher & { update: () => void }) | null;
+  const goal = useRef<number | null>(null);
+
+  useEffect(() => {
+    const def = ARTERIES.find((a) => a.id === selected);
+    if (!def) {
+      goal.current = null;
+      return;
+    }
+    const [x, , z] = def.waypoints[Math.floor(def.waypoints.length / 2)];
+    // Camera angle around Y (0 = straight in front). Clamp so we never swing round the back.
+    goal.current = THREE.MathUtils.clamp(Math.atan2(x, z), -1.1, 1.1);
+  }, [selected]);
+
+  useEffect(() => {
+    if (!controls) return;
+    const stop = () => (goal.current = null);
+    controls.addEventListener("start" as never, stop);
+    return () => controls.removeEventListener("start" as never, stop);
+  }, [controls]);
+
+  useFrame((_, delta) => {
+    if (goal.current === null) return;
+    const cur = Math.atan2(camera.position.x, camera.position.z);
+    let d = goal.current - cur;
+    d = Math.atan2(Math.sin(d), Math.cos(d)); // shortest way round
+    if (Math.abs(d) < 0.004) {
+      goal.current = null;
+      return;
+    }
+    const a = d * (1 - Math.exp(-4 * delta));
+    const { x, z } = camera.position;
+    camera.position.x = x * Math.cos(a) + z * Math.sin(a);
+    camera.position.z = z * Math.cos(a) - x * Math.sin(a);
+    camera.lookAt(0, 0, 0);
+    controls?.update();
+  });
+  return null;
+}
 
 /**
  * The 3D stage: renderer settings, lights, reflections, ground shadow, camera.
@@ -19,6 +103,8 @@ import Heart from "./Heart";
  */
 export default function Scene() {
   const select = useRiskStore((s) => s.select);
+  const selected = useRiskStore((s) => s.selected);
+  const [touched, setTouched] = useState(false); // once the user grabs the heart, stop the slow idle turn
 
   return (
     // The canvas is transparent; this CSS gradient is the backdrop behind the heart.
@@ -29,15 +115,17 @@ export default function Scene() {
       <Canvas
         shadows="soft" // soft-edged shadow maps
         dpr={[1, 1.75]} // cap pixel ratio: crisp on retina, still fast on integrated GPUs
-        camera={{ position: [0, 0.1, 3.8], fov: 40, near: 0.1, far: 50 }}
+        camera={{ position: [0.9, 0.15, 3.7], fov: 38, near: 0.1, far: 50 }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping; // filmic highlight roll-off
-          gl.toneMappingExposure = 1.15;
+          gl.toneMappingExposure = 1.2;
         }}
         onPointerMissed={() => select(null)} // click on empty space = deselect
       >
-                <ambientLight intensity={0.25} />
+        <CaptureBridge />
+        <CameraRig />
+        <ambientLight intensity={0.3} />
 
         {/* KEY light + shadow settings */}
         <directionalLight
@@ -65,7 +153,8 @@ export default function Scene() {
           <Lightformer form="rect" intensity={2.5} position={[0, 4, 3]} scale={[6, 3, 1]} />
           <Lightformer form="rect" intensity={1.2} position={[-5, 1, -1]} rotation-y={Math.PI / 2} scale={[4, 4, 1]} />
           <Lightformer form="rect" intensity={1.6} position={[5, 0, -2]} rotation-y={-Math.PI / 2} scale={[4, 4, 1]} />
-          <Lightformer form="ring" intensity={1} color="#ffd9cc" position={[0, -1, 5]} scale={4} />
+          <Lightformer form="ring" intensity={1.2} color="#ffd9cc" position={[0, -1, 5]} scale={4} />
+          <Lightformer form="circle" intensity={1.4} color="#ffe9dd" position={[3, 2, 4]} scale={2} />
         </Environment>
 
         <Suspense fallback={null}>
@@ -77,6 +166,9 @@ export default function Scene() {
 
         <OrbitControls
           makeDefault
+          onStart={() => setTouched(true)}
+          autoRotate={!touched && selected === null}
+          autoRotateSpeed={0.7}
           enablePan={false}
           enableDamping
           dampingFactor={0.08}
@@ -87,7 +179,7 @@ export default function Scene() {
         />
       </Canvas>
 
-      {/* Shows GLB download progress (the model is ~4 MB). */}
+      {/* Shows download progress while the heart loads (about 4 MB). */}
       <Loader />
     </div>
   );

@@ -1,0 +1,37 @@
+On branch heart-ui-work
+Your branch is up to date with 'origin/heart-ui-work'.
+
+Changes not staged for commit:
+  (use "git add/rm <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	deleted:    apps/web/public.zip
+	modified:   apps/web/src/app/globals.css
+	modified:   apps/web/src/app/layout.tsx
+	modified:   apps/web/src/app/page.tsx
+	modified:   apps/web/src/components/dashboard/RiskPanel.tsx
+	modified:   apps/web/src/components/three/Artery.tsx
+	modified:   apps/web/src/components/three/ArteryLabel.tsx
+	modified:   apps/web/src/components/three/Heart.tsx
+	modified:   apps/web/src/components/three/Scene.tsx
+	modified:   apps/web/src/config/arteries.ts
+	modified:   apps/web/src/store/useRiskStore.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	apps/web/public/public/
+	apps/web/public/src/
+	apps/web/src/app/report/
+	apps/web/src/app/results/
+	apps/web/src/components/brand/
+	apps/web/src/components/report/
+	apps/web/src/components/results/
+	apps/web/src/components/web/
+	apps/web/src/config/brand.ts
+	apps/web/src/config/routes.ts
+	apps/web/src/lib/format.ts
+	apps/web/src/lib/mockResult.ts
+	apps/web/src/lib/snapshot.ts
+	apps/web/src/lib/types.ts
+	changes.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")

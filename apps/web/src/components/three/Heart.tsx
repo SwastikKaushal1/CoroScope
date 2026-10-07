@@ -15,6 +15,35 @@ const SAMPLES = 60; // points per vessel after snapping to the surface
 // paste into config/arteries.ts. The heartbeat is paused while it is on.
 const DEBUG_PICK = false;
 
+/**
+ * The GLB has no normals, and its vertices are duplicated along texture seams.
+ * Plain computeVertexNormals() would leave a visible crease on every seam, so after
+ * computing we average the normals of vertices that sit at the same position.
+ */
+function smoothNormals(geo: THREE.BufferGeometry) {
+  geo.computeVertexNormals();
+  const pos = geo.attributes.position;
+  const nor = geo.attributes.normal;
+  const groups = new Map<string, number[]>();
+  for (let i = 0; i < pos.count; i++) {
+    const k = `${Math.round(pos.getX(i) * 1e4)},${Math.round(pos.getY(i) * 1e4)},${Math.round(pos.getZ(i) * 1e4)}`;
+    const g = groups.get(k);
+    if (g) g.push(i);
+    else groups.set(k, [i]);
+  }
+  const v = new THREE.Vector3();
+  groups.forEach((ids) => {
+    if (ids.length < 2) return;
+    v.set(0, 0, 0);
+    ids.forEach((i) => (v.x += nor.getX(i)));
+    ids.forEach((i) => (v.y += nor.getY(i)));
+    ids.forEach((i) => (v.z += nor.getZ(i)));
+    v.normalize();
+    ids.forEach((i) => nor.setXYZ(i, v.x, v.y, v.z));
+  });
+  nor.needsUpdate = true;
+}
+
 export default function Heart({ targetHeight = 2 }: { targetHeight?: number }) {
   const { scene } = useGLTF(MODEL_URL);
   // useGLTF caches one scene; clone so this component owns its own graph.
@@ -44,20 +73,27 @@ export default function Heart({ targetHeight = 2 }: { targetHeight?: number }) {
    */
   const material = useMemo(() => {
     let map: THREE.Texture | null = null;
+    let normalMap: THREE.Texture | null = null;
     model.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (!map && m.isMesh) map = ((m.material as THREE.MeshStandardMaterial).map as THREE.Texture) ?? null;
+      if (!m.isMesh) return;
+      const src = m.material as THREE.MeshStandardMaterial;
+      if (!map) map = src.map ?? null;
+      if (!normalMap) normalMap = src.normalMap ?? null; // the fine muscle / fat detail lives here
     });
     return new THREE.MeshPhysicalMaterial({
       map,
+      normalMap,
+      normalScale: new THREE.Vector2(1.25, 1.25),
       color: map ? "#ffffff" : "#c98f8a",
-      roughness: 0.48,
+      roughness: 0.42,
       metalness: 0,
-      clearcoat: 0.55,
-      clearcoatRoughness: 0.28,
-      sheen: 0.45,
-      sheenRoughness: 0.5,
-      sheenColor: new THREE.Color("#ff8f9a"),
+      clearcoat: 0.7, // wet, living tissue
+      clearcoatRoughness: 0.22,
+      sheen: 0.6,
+      sheenRoughness: 0.45,
+      sheenColor: new THREE.Color("#ff7f8c"),
+      envMapIntensity: 1.1,
       side: THREE.DoubleSide, // scanned meshes often have open/inverted faces
     });
   }, [model]);
@@ -68,7 +104,7 @@ export default function Heart({ targetHeight = 2 }: { targetHeight?: number }) {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
       // The file has no normals; without them lighting would be flat/black.
-      if (!m.geometry.attributes.normal) m.geometry.computeVertexNormals();
+      if (!m.geometry.attributes.normal) smoothNormals(m.geometry);
       m.material = material;
       m.castShadow = true; // heart shadows itself and the vessels' shadows land on it
       m.receiveShadow = true;
@@ -124,7 +160,10 @@ export default function Heart({ targetHeight = 2 }: { targetHeight?: number }) {
     if (!root || DEBUG_PICK) return;
     const phase = (clock.elapsedTime * 1.1) % 1; // ~66 bpm
     const bump = (c: number, w: number) => Math.exp(-(((phase - c) / w) ** 2));
-    root.scale.setScalar(1 + 0.018 * (0.65 * bump(0.08, 0.05) + 0.35 * bump(0.28, 0.06)));
+    const beat = 0.65 * bump(0.08, 0.05) + 0.35 * bump(0.28, 0.06);
+    root.scale.setScalar(1 + 0.022 * beat);
+    // A slow, gentle float so the heart feels alive even when nobody is touching it.
+    root.position.y = Math.sin(clock.elapsedTime * 0.8) * 0.018;
   });
 
   const onPick = (e: ThreeEvent<MouseEvent>) => {

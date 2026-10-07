@@ -30,7 +30,7 @@ const LIFT = 34; // distance from the artery point up to the pill centre
 const STEM = LIFT - PILL_H / 2; // connector length from pill bottom to the artery point
 
 // Clamp margins: how close the anchor may get to each canvas edge.
-const MARGIN_X = 62; // half pill width + breathing room
+const MARGIN_X = 80; // half pill width + breathing room
 const MARGIN_TOP = LIFT + PILL_H / 2 + 6; // the pill sits ABOVE the anchor, so it needs room on top
 const MARGIN_BOTTOM = 14;
 
@@ -60,7 +60,8 @@ const smoothstep = (a: number, b: number, x: number) => {
 interface Props {
   /** Artery point in heart-local space where the label is anchored. */
   anchor: THREE.Vector3;
-  id: string;
+  /** Short everyday name shown on the pill, e.g. "Front artery". */
+  name: string;
   probability: number;
   selected: boolean;
   hovered: boolean;
@@ -68,7 +69,7 @@ interface Props {
   onHover: (over: boolean) => void;
 }
 
-export default function ArteryLabel({ anchor, id, probability, selected, hovered, onSelect, onHover }: Props) {
+export default function ArteryLabel({ anchor, name, probability, selected, hovered, onSelect, onHover }: Props) {
   const groupRef = useRef<THREE.Group>(null); // 3D anchor
   const pillRef = useRef<HTMLDivElement>(null); // DOM element we fade directly
   const world = useMemo(() => new THREE.Vector3(), []);
@@ -114,7 +115,7 @@ export default function ArteryLabel({ anchor, id, probability, selected, hovered
             onClick={onSelect}
             onPointerEnter={() => onHover(true)}
             onPointerLeave={() => onHover(false)}
-            className="relative flex cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[11px] font-semibold text-white shadow-lg backdrop-blur-md transition-[background-color,border-color,box-shadow] duration-200"
+            className="relative flex cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-[12px] font-semibold text-white shadow-lg backdrop-blur-md transition-[background-color,border-color,box-shadow] duration-200"
             style={{
               height: PILL_H,
               background: active ? "rgba(15,23,42,0.92)" : "rgba(15,23,42,0.72)",
@@ -123,7 +124,7 @@ export default function ArteryLabel({ anchor, id, probability, selected, hovered
             }}
           >
             <span className="h-2 w-2 rounded-full" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
-            <span className="tracking-wide">{id}</span>
+            <span className="tracking-wide">{name}</span>
             <span className="tabular-nums text-slate-300">{Math.round(probability * 100)}%</span>
 
             {/* Connector line + dot that point at the artery. */}

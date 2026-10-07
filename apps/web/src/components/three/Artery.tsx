@@ -8,8 +8,30 @@ import { riskColor } from "@/lib/riskColor";
 import { useRiskStore } from "@/store/useRiskStore";
 import ArteryLabel from "./ArteryLabel";
 
-const VISIBLE_RADIUS = 0.022; // radius of the drawn vessel (scene units)
+const VISIBLE_RADIUS = 0.026; // base radius of the drawn vessel (scene units)
+const TAPER_START = 1.25; // vessels are thickest where they leave the aorta...
+const TAPER_END = 0.45; // ...and thin out toward the tip, like real coronary arteries
 const HIT_RADIUS = 0.055; // fatter invisible tube so thin vessels are easy to hover/click
+
+/** TubeGeometry with a radius that shrinks along its length (scales each ring toward the centre line). */
+function taperedTube(curve: THREE.CatmullRomCurve3, segs: number, radius: number, radial: number) {
+  const g = new THREE.TubeGeometry(curve, segs, radius, radial, false);
+  const pos = g.attributes.position;
+  const c = new THREE.Vector3();
+  const v = new THREE.Vector3();
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    curve.getPointAt(t, c);
+    const k = TAPER_START + (TAPER_END - TAPER_START) * t;
+    for (let j = 0; j <= radial; j++) {
+      const idx = i * (radial + 1) + j;
+      v.fromBufferAttribute(pos, idx).sub(c).multiplyScalar(k).add(c);
+      pos.setXYZ(idx, v.x, v.y, v.z);
+    }
+  }
+  pos.needsUpdate = true;
+  return g;
+}
 
 interface Props {
   def: ArteryDef;
@@ -43,6 +65,7 @@ export default function Artery({ def, curve }: Props) {
         roughness: 0.28,
         metalness: 0.05,
         clearcoat: 1, // wet, glossy vessel wall
+        envMapIntensity: 1.3,
         clearcoatRoughness: 0.12,
       }),
     []
@@ -53,7 +76,7 @@ export default function Artery({ def, curve }: Props) {
   const target = useMemo(() => riskColor(probability), [probability]);
 
   // Geometry: TubeGeometry(path, tubularSegments, radius, radialSegments, closed)
-  const tube = useMemo(() => new THREE.TubeGeometry(curve, 140, VISIBLE_RADIUS, 16, false), [curve]);
+  const tube = useMemo(() => taperedTube(curve, 140, VISIBLE_RADIUS, 20), [curve]);
   const hit = useMemo(() => new THREE.TubeGeometry(curve, 60, HIT_RADIUS, 8, false), [curve]);
   useEffect(() => () => { tube.dispose(); hit.dispose(); }, [tube, hit]);
 
@@ -67,11 +90,13 @@ export default function Artery({ def, curve }: Props) {
 
   // Runs every frame: exponential smoothing  v += (target - v) * k
   // where k = 1 - e^(-8*dt) makes the speed independent of frame rate.
-  useFrame((_, delta) => {
+  useFrame(({ clock }, delta) => {
     const k = 1 - Math.exp(-8 * delta);
     material.color.lerp(target, k);
     material.emissive.lerp(target, k);
-    const glow = isSelected ? 0.75 : isHovered ? 0.5 : 0.18;
+    // High-risk vessels breathe with a slow glow so the eye is drawn to them first.
+    const pulse = probability >= 0.65 ? 0.14 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 2.6)) : 0;
+    const glow = (isSelected ? 0.75 : isHovered ? 0.5 : 0.18) + pulse;
     material.emissiveIntensity = THREE.MathUtils.lerp(material.emissiveIntensity, glow, k);
   });
 
@@ -94,10 +119,10 @@ export default function Artery({ def, curve }: Props) {
       <mesh geometry={tube} material={material} castShadow />
       {/* Rounded end caps so the tube doesn't look sliced off. */}
       <mesh material={material} position={start}>
-        <sphereGeometry args={[VISIBLE_RADIUS, 16, 12]} />
+        <sphereGeometry args={[VISIBLE_RADIUS * TAPER_START, 20, 14]} />
       </mesh>
       <mesh material={material} position={end}>
-        <sphereGeometry args={[VISIBLE_RADIUS, 16, 12]} />
+        <sphereGeometry args={[VISIBLE_RADIUS * TAPER_END, 16, 12]} />
       </mesh>
 
       {/* Invisible fat copy: it only exists to receive pointer events. */}
@@ -107,7 +132,7 @@ export default function Artery({ def, curve }: Props) {
 
       <ArteryLabel
         anchor={anchor}
-        id={def.id}
+        name={def.plain}
         probability={probability}
         selected={isSelected}
         hovered={isHovered}

@@ -8,6 +8,8 @@ export type ArteryId = "LAD" | "LCX" | "RCA";
 export interface ArteryDef {
   id: ArteryId;
   label: string;
+  /** Short name shown on the 3D labels and in the panels (set to the code, e.g. "LAD"). */
+  plain: string;
   supplies: string;
   /**
    * Rough path of the vessel in the heart's local space.
@@ -26,6 +28,7 @@ export const ARTERIES: ArteryDef[] = [
   {
     id: "LAD",
     label: "Left anterior descending",
+    plain: "LAD",
     supplies: "Front of the heart",
     waypoints: [
       [0.05, 0.15, 0.6],
@@ -39,6 +42,7 @@ export const ARTERIES: ArteryDef[] = [
   {
     id: "LCX",
     label: "Left circumflex",
+    plain: "LCX",
     supplies: "Side and back of the heart",
     waypoints: [
       [0.15, 0.3, 0.45],
@@ -51,6 +55,7 @@ export const ARTERIES: ArteryDef[] = [
   {
     id: "RCA",
     label: "Right coronary artery",
+    plain: "RCA",
     supplies: "Right side and bottom of the heart",
     waypoints: [
       [-0.2, 0.3, 0.5],

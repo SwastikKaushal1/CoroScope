@@ -8,7 +8,7 @@ import { ARTERIES } from "@/config/arteries";
 import Artery from "./Artery";
 
 const MODEL_URL = "/models/heart.glb";
-const LIFT = 0.012; // how far vessels sit above the surface (scene units)
+const LIFT = 0.005; // how far vessels sit above the surface (scene units)
 const SAMPLES = 60; // points per vessel after snapping to the surface
 
 // Developer tool: when true, clicking the heart logs local coordinates you can
@@ -144,8 +144,24 @@ export default function Heart({ targetHeight = 2 }: { targetHeight?: number }) {
         const p = rough.getPoint(i / (SAMPLES - 1));
         const dir = p.clone().normalize(); // radial "outward" direction
         ray.set(p.clone().addScaledVector(dir, 1.5), dir.clone().negate());
-        const hit = ray.intersectObjects(meshes, false)[0];
-        snapped.push(hit ? hit.point.clone().addScaledVector(dir, LIFT) : p);
+        // Pick the surface hit CLOSEST to the hand-placed point (not the outermost one),
+        // so vessels stay on the ventricle instead of jumping onto the aorta / atria.
+        let best: THREE.Intersection | null = null;
+        let bestD = Infinity;
+        for (const hit of ray.intersectObjects(meshes, false)) {
+          const d = hit.point.distanceTo(p);
+          if (d < bestD) { bestD = d; best = hit; }
+        }
+        snapped.push(best && bestD < 0.3 ? best.point.clone().addScaledVector(dir, LIFT) : p.clone());
+      }
+      // Smooth out small bumps so the vessel hugs the heart instead of wobbling outward.
+      for (let pass = 0; pass < 3; pass++) {
+        const prev = snapped.map((v) => v.clone());
+        for (let i = 2; i < snapped.length - 2; i++) {
+          snapped[i].set(0, 0, 0);
+          for (let k = -2; k <= 2; k++) snapped[i].add(prev[i + k]);
+          snapped[i].multiplyScalar(1 / 5);
+        }
       }
       return { def, curve: new THREE.CatmullRomCurve3(snapped) };
     });

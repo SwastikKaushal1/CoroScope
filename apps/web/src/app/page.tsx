@@ -1,106 +1,107 @@
-"use client";
+'use client'
 
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
-import Logo from "@/components/brand/Logo";
-import { BRAND } from "@/config/brand";
-import { captureHeart } from "@/lib/snapshot";
-import Disclaimer from "@/components/dashboard/Disclaimer";
-import Explanation from "@/components/results/Explanation";
-import Summary from "@/components/results/Summary";
-import { FORM_ROUTE, REPORT_ROUTE } from "@/config/routes";
-import { MOCK_RESULT } from "@/lib/mockResult";
-import { useRiskStore } from "@/store/useRiskStore";
+import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, ArrowRight, Check, Crosshair, LockKeyhole, ScanLine, ShieldCheck, Sparkles } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import Brand from '@/components/brand/Brand'
+import SafetyBanner from '@/components/brand/SafetyBanner'
+import { RESULTS_ROUTE } from '@/config/routes'
+import { MOCK_RESULT } from '@/lib/mockResult'
+import { useRiskStore } from '@/store/useRiskStore'
+import type { PredictionResponse } from '@/lib/types'
 
-// three.js needs WebGL (browser only), so the canvas is never rendered on the server.
-const Scene = dynamic(() => import("@/components/three/Scene"), {
-  ssr: false,
-  loading: () => <div className="flex h-full items-center justify-center text-sm text-slate-500">Loading your heart…</div>,
-});
+const wizardSteps = ['Profile', 'Vitals', 'ECG / Lab', 'Review']
+const processingSteps = ['Validating clinical inputs...', 'Computing feature attributions...', 'Generating multi-vessel risk map...']
+const initialForm = { patientName: '', age: '58', sex: 'male', weight: '79', height: '170', systolic: '138', diastolic: '84', pulse: '76', chestPain: 'atypical', lvef: '58', diabetes: 'no', st: 'no', twave: 'no' }
+type FormState = typeof initialForm
 
-/**
- * /results — where the form sends the user after the API call.
- *   Form:   useRiskStore.getState().setResult(data); router.push("/results");
- *   Dev:    open /results?demo to preview with sample data (no backend needed).
- */
-export default function ResultsPage() {
-  const result = useRiskStore((s) => s.result);
-  const patient = useRiskStore((s) => s.patient);
-  const router = useRouter();
-  const [ready, setReady] = useState(false); // wait for client so sessionStorage state matches the server HTML
+// Plain-English chest pain choices. The `value`s are unchanged, so the backend mapping still works.
+const chestPainOptions = [
+  { value: 'typical', label: 'Classic heart-type chest pain', hint: 'Pressure or tightness in the chest that comes on with effort or stress and eases with rest.' },
+  { value: 'atypical', label: 'Unusual chest pain', hint: 'Chest discomfort with only some features of heart pain, or no clear pattern.' },
+  { value: 'non-anginal', label: 'Chest pain not from the heart', hint: 'Sharp or stabbing pain, or pain that changes with breathing, movement or touch.' },
+  { value: 'asymptomatic', label: 'No chest pain', hint: 'The patient has no chest pain.' },
+]
+// BMI is calculated from weight (kg) and height (cm), never typed in.
+function calcBmi(weight: string, height: string) {
+  const w = parseFloat(weight), h = parseFloat(height) / 100
+  return w > 0 && h > 0 ? Math.round((w / (h * h)) * 10) / 10 : null
+}
 
-  useEffect(() => {
-    const { result: saved, setResult } = useRiskStore.getState();
-    if (!saved && new URLSearchParams(window.location.search).has("demo")) setResult(MOCK_RESULT);
-    setReady(true);
-  }, []);
+type FieldProps = { label: string; id: string; value: string; onChange: (value: string) => void; suffix?: string; hint?: string }
+const Hint = ({ text }: { text?: string }) => text ? <p className="text-xs leading-5 text-slate-500">{text}</p> : null
+function TextField({ label, id, value, onChange, suffix }: FieldProps) {
+  return <div className="flex flex-col gap-2"><Label htmlFor={id} className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{label}</Label><div className="relative"><Input id={id} value={value} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl border-slate-800 bg-slate-950/60 pr-14 font-mono text-sm text-white focus-visible:border-teal-400 focus-visible:ring-teal-400/20" />{suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-500">{suffix}</span>}</div></div>
+}
+function SelectField({ label, id, value, onChange, options, hint }: { label: string; id: string; value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; hint?: string }) {
+  return <div className="flex flex-col gap-2"><Label htmlFor={id} className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{label}</Label><select id={id} value={value} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl border border-slate-800 bg-slate-900/50 px-3 font-mono text-sm text-white outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20">{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><Hint text={hint} /></div>
+}
+function NumberField({ label, id, value, onChange, suffix, hint }: FieldProps) {
+  return <div className="flex flex-col gap-2"><Label htmlFor={id} className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{label}</Label><div className="relative"><Input id={id} type="number" value={value} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl border-slate-800 bg-slate-900/50 px-3 pr-14 font-mono text-sm text-white focus-visible:border-teal-400 focus-visible:ring-teal-400/20" />{suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-500">{suffix}</span>}</div><Hint text={hint} /></div>
+}
+function CardiacVisual() { return <div className="relative min-h-[380px] overflow-hidden rounded-[2rem] border border-white/10 bg-[#06171d] shadow-2xl shadow-teal-950/30"><div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(94,234,212,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(94,234,212,.12)_1px,transparent_1px)] [background-size:32px_32px]" /><div className="absolute inset-0 bg-[radial-gradient(circle_at_45%_50%,rgba(20,184,166,.18),transparent_48%)]" /><svg viewBox="0 0 700 380" className="relative h-full min-h-[380px] w-full" role="img" aria-label="Animated ECG pulse wave over a cardiovascular grid"><defs><filter id="pulse-glow"><feGaussianBlur stdDeviation="5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs><g fill="none" stroke="#164e63" strokeWidth="1"><path d="M65 65h570M65 125h570M65 185h570M65 245h570M65 305h570M65 35v310M145 35v310M225 35v310M305 35v310M385 35v310M465 35v310M545 35v310M625 35v310" /></g><path d="M70 190 C125 190 130 190 157 190 L175 190 L188 170 L202 216 L218 190 L262 190 L276 187 L288 120 L305 274 L323 190 L360 190 C390 190 398 190 425 190 L443 190 L457 170 L471 216 L487 190 L535 190 L550 184 L563 137 L578 250 L591 190 L630 190" fill="none" stroke="#5eead4" strokeWidth="3" filter="url(#pulse-glow)" strokeLinecap="round" strokeLinejoin="round"><animate attributeName="stroke-dasharray" values="0 1600;700 900;1600 0" dur="3.8s" repeatCount="indefinite" /></path><circle cx="305" cy="274" r="6" fill="#5eead4" opacity=".9"><animate attributeName="r" values="4;10;4" dur="1.4s" repeatCount="indefinite" /></circle></svg><div className="absolute bottom-6 left-6 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300"><span className="size-1.5 rounded-full bg-teal-300 shadow-[0_0_10px_#5eead4]" />Live ECG signal layer</div><div className="absolute right-6 top-6 font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">CARDIO / 01</div></div> }
+function GlobalImpactSection() { return <section id="impact" className="border-y border-slate-800/50 bg-slate-900/30 px-5 py-24 lg:px-10"><div className="mx-auto max-w-7xl"><h2 className="text-center text-3xl font-semibold tracking-tight text-white md:text-4xl">The Scale of Cardiovascular Disease.</h2><p className="mt-4 mb-16 text-center text-slate-400">Why multi-vessel visualization is critical for modern clinical review.</p><div className="mx-auto grid max-w-5xl grid-cols-1 gap-12 text-center md:grid-cols-3"><div><p className="font-mono text-5xl font-light text-teal-400">17.9M</p><p className="mt-4 text-sm uppercase tracking-widest text-slate-400">Global deaths annually</p></div><div><p className="font-mono text-5xl font-light text-teal-400">1 in 3</p><p className="mt-4 text-sm uppercase tracking-widest text-slate-400">Attributed to cardiovascular disease</p></div><div><p className="font-mono text-5xl font-light text-teal-400">&gt;50%</p><p className="mt-4 text-sm uppercase tracking-widest text-slate-400">Cases involve multi-vessel stenosis</p></div></div></div></section> }
+function WhySection() { const cards = [{ title: 'Multi-vessel mapping', text: 'Predict stenosis probabilities across LAD, LCX, and RCA territories.', icon: '01' }, { title: 'Explainable AI (SHAP)', text: 'Transparent feature attribution so clinicians understand exactly what drives the risk model.', icon: '02' }, { title: 'Non-invasive profiling', text: 'Driven by standard demographic, vital, laboratory, and ECG data.', icon: '03' }]; return <><GlobalImpactSection /><section id="why" className="mx-auto max-w-7xl scroll-mt-24 border-t border-white/10 px-5 py-24 lg:px-10"><div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-24"><div><p className="eyebrow"><Crosshair className="size-4" /> The clinical gap</p><h2 className="mt-4 text-3xl font-semibold tracking-tight text-white md:text-5xl">Moving beyond raw percentages.</h2></div><div className="relative max-w-xl overflow-hidden rounded-2xl border border-white/10 border-l-teal-400/80 bg-slate-900/50 p-7 backdrop-blur-md"><div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-teal-300 via-teal-500 to-transparent" /><p className="text-base leading-relaxed text-slate-300 md:text-lg">Traditional risk scores compress a complex cardiovascular profile into a single number. Coroscope adds spatial context, helping clinical teams see which vessel territories may need a closer look before formal diagnostic imaging.</p></div></div></section><div aria-hidden="true" className="mx-auto my-16 h-px w-full max-w-4xl bg-gradient-to-r from-transparent via-slate-700 to-transparent" /><section id="capabilities" className="mx-auto mt-24 max-w-7xl scroll-mt-24 px-5 pb-24 lg:px-10"><div className="mb-10"><p className="eyebrow">Core capabilities</p><h2 className="mt-4 text-2xl font-semibold text-white md:text-3xl">A clearer signal for clinical review.</h2></div><div className="grid gap-4 md:grid-cols-3">{cards.map((card, index) => <motion.article key={card.title} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * .1 }} className="glass-panel rounded-2xl p-7"><div className="mb-12 flex items-center justify-between"><span className="font-mono text-sm text-teal-300">{card.icon}</span><span className="size-2 rounded-full bg-teal-400 shadow-[0_0_12px_#5eead4]" /></div><h3 className="text-lg font-medium text-white">{card.title}</h3><p className="mt-3 text-sm leading-6 text-slate-400">{card.text}</p></motion.article>)}</div></section></> }
+function AssessmentWizard({ form, update, onSubmit, onCancel }: { form: FormState; update: (key: keyof FormState) => (value: string) => void; onSubmit: () => void; onCancel: () => void }) {
+  const [step, setStep] = useState(0)
+  const bmi = calcBmi(form.weight, form.height)
+  const yn = (v: string) => (v === 'yes' ? 'Yes' : 'No')
+  const reviewRows: [string, string][] = [
+    ['Patient', form.patientName || '—'], ['Age', `${form.age} y`], ['Sex', form.sex === 'female' ? 'Female' : 'Male'],
+    ['Weight / Height', `${form.weight} kg / ${form.height} cm`], ['BMI (calculated)', bmi ? `${bmi} kg/m²` : '—'],
+    ['Blood pressure', `${form.systolic}/${form.diastolic} mmHg`], ['Pulse', `${form.pulse} bpm`],
+    ['Chest pain', chestPainOptions.find((o) => o.value === form.chestPain)?.label ?? form.chestPain],
+    ['LVEF', `${form.lvef} %`], ['Diabetes', yn(form.diabetes)], ['ST elevation', yn(form.st)], ['T-wave inversion', yn(form.twave)],
+  ]
+  const fields = step === 0 ? <div className="flex flex-col gap-5"><div className="rounded-2xl border border-teal-400/15 bg-teal-400/[.04] p-4"><div className="flex flex-col gap-2"><Label htmlFor="patientName" className="text-xs font-medium uppercase tracking-[0.14em] text-teal-200">Patient name</Label><Input id="patientName" value={form.patientName} onChange={(event) => update('patientName')(event.target.value)} placeholder="Enter patient name" required aria-required="true" className="h-11 rounded-xl border-slate-800 bg-slate-950/60 text-white placeholder:text-slate-600" /></div><p className="mt-2 text-xs text-slate-500">Used to identify this report. Avoid medical record numbers.</p></div><div className="flex flex-col gap-4"><div className="flex items-center justify-between"><Label htmlFor="age" className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Age</Label><div className="rounded-xl border border-slate-800 bg-slate-950/70 px-5 py-3 font-mono text-lg text-white"><Input id="age" type="number" value={form.age} onChange={(event) => update('age')(event.target.value)} className="inline h-auto w-12 border-0 bg-transparent p-0 text-right font-mono text-lg text-white shadow-none focus-visible:ring-0" /><span className="ml-3 text-sm text-slate-500">y</span></div></div><input aria-label="Age slider" type="range" min="18" max="100" value={form.age} onChange={(event) => update('age')(event.target.value)} className="h-1 w-full accent-teal-300" /><div className="flex justify-between font-mono text-xs text-slate-600"><span>18y</span><span>100y</span></div></div><div className="grid gap-8 md:grid-cols-2"><div className="flex flex-col gap-3"><Label className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Sex</Label><div className="grid grid-cols-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-2"><button type="button" onClick={() => update('sex')('male')} className={`rounded-xl px-4 py-4 text-sm font-medium transition ${form.sex === 'male' ? 'bg-teal-300 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Male</button><button type="button" onClick={() => update('sex')('female')} className={`rounded-xl px-4 py-4 text-sm font-medium transition ${form.sex === 'female' ? 'bg-teal-300 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Female</button></div></div><NumberField label="Weight" id="weight" value={form.weight} onChange={update('weight')} suffix="kg" /></div><div className="grid gap-6 md:grid-cols-2"><NumberField label="Height" id="height" value={form.height} onChange={update('height')} suffix="cm" hint="Used with weight to calculate BMI automatically." /><div className="flex flex-col gap-2"><Label className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">BMI (calculated)</Label><div className="flex h-12 items-center rounded-xl border border-slate-800 bg-slate-950/60 px-3 font-mono text-sm text-white">{bmi ? `${bmi} kg/m²` : '—'}</div></div></div><div className="max-w-md"><div className="mb-3 flex items-center justify-between text-xs uppercase tracking-[0.14em]"><span className="text-slate-500">Body composition</span><span className="text-teal-300">Healthy range 18.5–24.9</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-800"><div style={{ width: `${bmi ? Math.min(100, Math.max(4, ((bmi - 15) / 25) * 100)) : 0}%` }} className="h-full rounded-full bg-gradient-to-r from-teal-300 via-emerald-200 to-amber-300" /></div></div></div> : step === 1 ? <div className="flex flex-col gap-8"><div className="grid grid-cols-1 gap-6 md:grid-cols-3"><NumberField label="Systolic blood pressure" id="systolic" value={form.systolic} onChange={update('systolic')} suffix="mmHg" /><NumberField label="Diastolic blood pressure" id="diastolic" value={form.diastolic} onChange={update('diastolic')} suffix="mmHg" /><NumberField label="Pulse rate" id="pulse" value={form.pulse} onChange={update('pulse')} suffix="bpm" /></div><SelectField label="Chest pain type" id="chestPain" value={form.chestPain} onChange={update('chestPain')} options={chestPainOptions} hint={chestPainOptions.find((o) => o.value === form.chestPain)?.hint} /></div> : step === 2 ? <div className="flex flex-col gap-6"><div className="rounded-2xl border border-teal-400/15 bg-teal-400/[.04] p-4 text-sm leading-6 text-slate-300"><p className="font-medium text-teal-200">What goes on this page?</p><p className="mt-1 text-slate-400">These values come from the patient's <span className="text-slate-200">ECG</span> (the heart-rhythm tracing) and <span className="text-slate-200">echocardiogram</span> (heart ultrasound) reports. Copy them from the report. If you don't have a value, leave the default: the model fills gaps with typical values.</p></div><div className="grid gap-6 md:grid-cols-2"><NumberField label="LVEF %" id="lvef" value={form.lvef} onChange={update('lvef')} suffix="%" hint="Ejection fraction: the % of blood the left ventricle pumps out with each beat. Listed as “EF” on the echo report. Normal is about 55–70%." /><SelectField label="Diabetes" id="diabetes" value={form.diabetes} onChange={update('diabetes')} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} hint="Choose Yes if the patient has diagnosed diabetes or takes diabetes medication." /><SelectField label="ST elevation" id="st" value={form.st} onChange={update('st')} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} hint="On the ECG, the ST segment (the flat stretch after the main spike) sits above the baseline. Choose Yes only if the ECG report says so." /><SelectField label="T-wave inversion" id="twave" value={form.twave} onChange={update('twave')} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} hint="On the ECG, the T wave (the small bump after the spike) points downward instead of up. Choose Yes only if the report mentions it." /></div></div> : <div className="grid gap-4 sm:grid-cols-2">{reviewRows.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">{label}</p><p className="mt-2 font-mono text-sm text-white">{value}</p></div>)}</div>
+  return <section className="w-full max-w-4xl px-4"><div className="rounded-[2rem] border border-slate-800 bg-[#0b1020]/90 p-5 shadow-2xl shadow-black/30 md:p-6 lg:p-7"><div className="flex items-start justify-between"><div><p className="font-mono text-sm font-medium uppercase tracking-[0.28em] text-teal-300">Step {step + 1} / 4</p><h1 className="mt-6 text-3xl font-semibold tracking-tight text-white">{wizardSteps[step]}</h1></div><LockKeyhole className="mt-1 size-7 text-slate-600" /></div><div className="mt-7 border-t border-slate-800" /><div className="mt-7"><form onSubmit={(event) => { event.preventDefault(); if (step < wizardSteps.length - 1) setStep((value) => value + 1); else onSubmit() }} className="grid gap-10">{fields}<div className="flex items-center justify-between border-t border-slate-800 pt-8"><Button type="button" variant="ghost" onClick={() => step === 0 ? onCancel() : setStep((value) => value - 1)} className="text-slate-400 hover:text-white"><ArrowLeft data-icon="inline-start" />{step === 0 ? 'Cancel' : 'Back'}</Button>{step === wizardSteps.length - 1 ? <Button type="submit" className="bg-teal-300 px-6 font-semibold text-slate-950 hover:bg-teal-200">Run prediction engine<ArrowRight data-icon="inline-end" /></Button> : <Button type="submit" className="bg-teal-300 px-6 font-semibold text-slate-950 hover:bg-teal-200">Continue<ArrowRight data-icon="inline-end" /></Button>}</div></form></div></div></section>
+}
+function ProcessingState({ error, onBack, onDemo }: { error?: string; onBack?: () => void; onDemo?: () => void }) { const [active, setActive] = useState(0); useEffect(() => { const timer = setInterval(() => setActive((value) => Math.min(value + 1, 2)), 850); return () => clearInterval(timer) }, []); return <main className="flex min-h-screen items-center justify-center bg-slate-950 px-5 text-slate-100"><div className="w-full max-w-lg text-center"><div className="relative mx-auto mb-10 flex size-28 items-center justify-center rounded-full border border-teal-400/30 bg-teal-400/5"><div className="absolute inset-2 animate-ping rounded-full border border-teal-400/20" /><ScanLine className="relative size-9 text-teal-300" /></div>{error && <div role="alert" className="mb-8 rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{error}<div className="mt-3 flex justify-center gap-3"><Button type="button" variant="ghost" onClick={onBack} className="text-slate-300 hover:text-white">Back to form</Button><Button type="button" onClick={onDemo} className="bg-teal-300 font-semibold text-slate-950 hover:bg-teal-200">Use demo data</Button></div></div>}<p className="eyebrow">Prediction engine active</p><h1 className="mt-4 text-3xl font-semibold text-white">Mapping cardiovascular risk.</h1><div className="mt-10 flex flex-col gap-4 text-left">{processingSteps.map((item, index) => <div key={item} className={`flex items-center gap-3 rounded-xl border px-4 py-3 font-mono text-xs ${index <= active ? 'border-teal-400/20 bg-teal-400/[.05] text-teal-200' : 'border-white/5 text-slate-600'}`}>{index < active ? <Check className="size-4" /> : <span className={`size-2 rounded-full ${index === active ? 'animate-pulse bg-teal-300' : 'bg-slate-700'}`} />}{item}</div>)}</div></div></main> }
+function LegalPage({ kind, onBack }: { kind: 'privacy' | 'terms'; onBack: () => void }) { const privacy = kind === 'privacy'; return <main className="min-h-screen bg-slate-950 px-5 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><Brand onClick={onBack} /><article className="mt-12 rounded-3xl border border-white/10 bg-slate-900/60 p-7 md:p-10"><p className="eyebrow">Coroscope Clinical Systems</p><h1 className="mt-4 text-3xl font-semibold text-white">{privacy ? 'Privacy Policy' : 'Terms of Use'}</h1><p className="mt-3 text-sm text-slate-500">Effective October 7, 2026</p>{privacy ? <div className="mt-8 flex flex-col gap-6 text-sm leading-7 text-slate-300"><p>Coroscope is a clinical decision-support prototype. Information entered into the assessment is used to calculate and display the requested risk visualization in the current session.</p><p>Do not enter names, medical record numbers, or other directly identifying information. We do not use this prototype to make autonomous diagnoses or treatment decisions.</p><p>For questions about data handling, contact the Coroscope Clinical Systems team before using the tool with real patient information.</p></div> : <div className="mt-8 flex flex-col gap-6 text-sm leading-7 text-slate-300"><p>This tool is provided for educational and decision-support purposes only. It is not medical advice, a diagnosis, or a replacement for qualified clinical judgment or formal diagnostic testing.</p><p>You are responsible for reviewing all inputs and interpreting outputs in the appropriate clinical context. Never use this prototype for emergency decisions.</p><p>By using Coroscope, you acknowledge these limitations and agree to use the assessment responsibly.</p></div>}<Button type="button" onClick={onBack} className="mt-9 bg-teal-300 font-semibold text-slate-950 hover:bg-teal-200">Return to home</Button></article></div></main> }
+function LandingPage({ onStart, onHome, onLegal }: { onStart: () => void; onHome: () => void; onLegal: (kind: 'privacy' | 'terms') => void }) { return <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-100"><SafetyBanner /><header className="sticky top-0 z-20 mx-auto flex max-w-7xl items-center justify-between border-b border-white/10 bg-slate-950/85 px-5 py-4 backdrop-blur-xl lg:px-10"><Brand onClick={onHome} /><nav aria-label="Primary navigation" className="hidden items-center gap-7 md:flex"><a href="#why" className="text-xs text-slate-400 transition-colors hover:text-teal-300">Why Coroscope</a><a href="#capabilities" className="text-xs text-slate-400 transition-colors hover:text-teal-300">Capabilities</a></nav><div className="flex items-center gap-3"><div className="hidden items-center gap-2 text-xs text-slate-500 lg:flex"><ShieldCheck className="size-4 text-teal-400" /> Secure workspace</div><Button type="button" onClick={onStart} size="sm" className="bg-teal-300 font-semibold text-slate-950 hover:bg-teal-200">Start assessment</Button></div></header><section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-24 pt-10 lg:grid-cols-[.9fr_1.1fr] lg:px-10 lg:pt-20"><motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .65 }}><div className="eyebrow"><Sparkles className="size-3.5" /> Advanced cardiovascular risk visualization</div><h1 className="mt-6 max-w-2xl text-5xl font-semibold tracking-[-.05em] text-white md:text-7xl">See risk<br /><span className="text-teal-300">before it escalates.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-slate-400 md:text-lg">Coroscope turns patient clinical data into a clear, multi-vessel cardiovascular risk visualization for more informed review.</p><Button onClick={onStart} className="mt-9 h-12 rounded-xl bg-teal-400 px-6 font-semibold text-slate-950 shadow-lg shadow-teal-950/40 hover:bg-teal-300">Start clinical assessment <ArrowRight data-icon="inline-end" /></Button></motion.div><motion.div initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .8, delay: .12 }}><CardiacVisual /></motion.div></section><WhySection /><footer className="border-t border-white/10 px-5 py-8 lg:px-10"><div className="mx-auto flex max-w-7xl flex-col gap-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between"><span>© 2026 Coroscope Clinical Systems</span><nav className="flex gap-5"><a href="#privacy" onClick={(event) => { event.preventDefault(); onLegal('privacy') }} className="transition-colors hover:text-teal-400">Privacy</a><a href="#terms" onClick={(event) => { event.preventDefault(); onLegal('terms') }} className="transition-colors hover:text-teal-400">Terms</a></nav></div></footer></main> }
+function ClinicalWorkspace({ form, update, onSubmit, onCancel }: { form: FormState; update: (key: keyof FormState) => (value: string) => void; onSubmit: () => void; onCancel: () => void }) { return <main className="min-h-screen bg-slate-950 text-slate-100"><SafetyBanner /><header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 lg:px-10"><Brand onClick={onCancel} /><Button variant="ghost" onClick={onCancel} className="text-slate-400 hover:bg-white/5 hover:text-white">Cancel / Return</Button></header><div className="flex min-h-[calc(100vh-103px)] items-start justify-center py-5 lg:items-center lg:py-6"><AssessmentWizard form={form} update={update} onSubmit={onSubmit} onCancel={onCancel} /></div></main> }
+const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
-  // Photograph the 3D view first (it only exists on this page), then open the report.
-  const openReport = () => {
-    useRiskStore.getState().setSnapshot(captureHeart());
-    router.push(REPORT_ROUTE);
-  };
+// Map this form's fields to the backend's feature names (blank/unknown ones are imputed by the model).
+function toPayload(f: FormState) {
+  const n = (v: string) => (v.trim() === '' || isNaN(+v) ? undefined : +v)
+  const body: Record<string, number | string | undefined> = {
+    Age: n(f.age), Sex: f.sex === 'female' ? 'Female' : 'Male', Weight: n(f.weight), Length: n(f.height), BMI: calcBmi(f.weight, f.height) ?? undefined, BP: n(f.systolic), PR: n(f.pulse),
+    'EF-TTE': n(f.lvef), DM: f.diabetes === 'yes' ? 1 : 0, 'ST Elevation': f.st === 'yes' ? 1 : 0, 'T inversion': f.twave === 'yes' ? 1 : 0,
+    'Typical Chest Pain': f.chestPain === 'typical' ? 1 : 0, Atypical: f.chestPain === 'atypical' ? 1 : 0, Nonanginal: f.chestPain === 'non-anginal' ? 1 : 0,
+  }
+  return Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))
+}
 
-  if (!ready) return <div className="h-dvh" />;
+export default function Page() {
+  const router = useRouter()
+  const [view, setView] = useState<'landing' | 'workspace' | 'privacy' | 'terms'>('landing')
+  const [form, setForm] = useState(initialForm)
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState('')
+  const update = (key: keyof FormState) => (value: string) => setForm((current) => ({ ...current, [key]: value }))
 
-  if (!result) {
-    return (
-      <div className="flex h-dvh flex-col">
-        <Disclaimer />
-        <main className="flex flex-1 flex-col items-center justify-center gap-4 px-6 text-center">
-          <h1 className="font-display text-3xl">No results to show yet</h1>
-          <p className="max-w-sm text-sm text-slate-400">Complete the health check to see your heart results.</p>
-          <div className="flex gap-3">
-            <Link href={FORM_ROUTE} className="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-900 hover:bg-white">
-              Start a health check
-            </Link>
-          </div>
-        </main>
-      </div>
-    );
+  const finish = (data: PredictionResponse) => {
+    // Keep the name/age/sex typed in the form on the report header, then open the results page.
+    useRiskStore.getState().setResult({ ...data, patient: { name: form.patientName, age: form.age, sex: form.sex === 'female' ? 'Female' : 'Male', ...data.patient } })
+    router.push(RESULTS_ROUTE)
+  }
+  const submit = async () => {
+    setProcessing(true); setError('')
+    try {
+      const res = await fetch(`${API}/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toPayload(form)) })
+      if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      finish(await res.json())
+    } catch (e) {
+      setError(`${(e as Error).message}. Is the backend running?`)
+    }
   }
 
-  return (
-    <div className="flex h-dvh flex-col">
-      <Disclaimer />
-      <header className="flex items-center justify-between border-b border-white/10 bg-gradient-to-r from-[#0b1b2b] to-slate-950 px-5 py-2.5">
-        <div className="flex items-center gap-3">
-          <Logo size={30} />
-          <span className="font-display text-lg">{BRAND}</span>
-          <span className="hidden text-sm text-slate-400 sm:inline">
-            {[patient.name, patient.age && `${patient.age} yr`, patient.sex].filter(Boolean).join(" · ") || "Your heart results"}
-          </span>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={openReport} className="rounded-lg bg-[#0E8F8A] px-3 py-1.5 text-sm font-semibold text-white transition hover:brightness-110">
-            Download report
-          </button>
-          <Link href={FORM_ROUTE} className="rounded-lg border border-white/15 px-3 py-1.5 text-sm transition hover:bg-white/10">
-            New check
-          </Link>
-        </div>
-      </header>
-
-      {/* Mobile: one scrolling column (summary, heart, explanation). Desktop: three fixed columns. */}
-      <main className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[320px_minmax(0,1fr)_400px] lg:grid-rows-1 lg:overflow-hidden">
-        <Summary result={result} />
-
-        <section className="relative h-[62dvh] min-h-[360px] lg:h-auto lg:min-h-0">
-          <Scene />
-          <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full bg-black/40 px-3 py-1 text-[11px] text-slate-300 backdrop-blur">
-            Low
-            <span className="h-1.5 w-20 rounded-full" style={{ background: "linear-gradient(90deg,#2fbf86,#f5b83d,#ef4452)" }} />
-            High
-          </div>
-          <p className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/40 px-3 py-1 text-[11px] text-slate-300 backdrop-blur">
-            Drag to turn the heart · Scroll or pinch to zoom · Tap an artery
-          </p>
-        </section>
-
-        <Explanation result={result} />
-      </main>
-    </div>
-  );
+  if (processing) return <ProcessingState error={error} onBack={() => { setProcessing(false); setError('') }} onDemo={() => finish(MOCK_RESULT)} />
+  if (view === 'privacy' || view === 'terms') return <LegalPage kind={view} onBack={() => setView('landing')} />
+  return view === 'landing' ? <LandingPage onStart={() => setView('workspace')} onHome={() => setView('landing')} onLegal={setView} /> : <ClinicalWorkspace form={form} update={update} onSubmit={submit} onCancel={() => setView('landing')} />
 }

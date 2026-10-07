@@ -4,34 +4,58 @@ Your branch is up to date with 'origin/heart-ui-work'.
 Changes not staged for commit:
   (use "git add/rm <file>..." to update what will be committed)
   (use "git restore <file>..." to discard changes in working directory)
-	deleted:    apps/web/public.zip
+	modified:   apps/web/package-lock.json
+	modified:   apps/web/package.json
+	deleted:    apps/web/public/public/models/heart.glb
+	deleted:    apps/web/public/src/app/favicon.ico
+	deleted:    apps/web/public/src/app/globals.css
+	deleted:    apps/web/public/src/app/layout.tsx
+	deleted:    apps/web/public/src/app/page.tsx
+	deleted:    apps/web/public/src/app/report/page.tsx
+	deleted:    apps/web/public/src/app/results/page.tsx
+	deleted:    apps/web/public/src/components/brand/Logo.tsx
+	deleted:    apps/web/public/src/components/dashboard/Disclaimer.tsx
+	deleted:    apps/web/public/src/components/dashboard/RiskPanel.tsx
+	deleted:    apps/web/public/src/components/report/Report.tsx
+	deleted:    apps/web/public/src/components/report/report.css
+	deleted:    apps/web/public/src/components/results/Explanation.tsx
+	deleted:    apps/web/public/src/components/results/Summary.tsx
+	deleted:    apps/web/public/src/components/three/Artery.tsx
+	deleted:    apps/web/public/src/components/three/ArteryLabel.tsx
+	deleted:    apps/web/public/src/components/three/Heart.tsx
+	deleted:    apps/web/public/src/components/three/Scene.tsx
+	deleted:    apps/web/public/src/components/web/Disclaimer.tsx
+	deleted:    apps/web/public/src/config/arteries.ts
+	deleted:    apps/web/public/src/config/brand.ts
+	deleted:    apps/web/public/src/config/routes.ts
+	deleted:    apps/web/public/src/lib/format.ts
+	deleted:    apps/web/public/src/lib/mockResult.ts
+	deleted:    apps/web/public/src/lib/riskColor.ts
+	deleted:    apps/web/public/src/lib/snapshot.ts
+	deleted:    apps/web/public/src/lib/types.ts
+	deleted:    apps/web/public/src/store/useRiskStore.ts
 	modified:   apps/web/src/app/globals.css
 	modified:   apps/web/src/app/layout.tsx
 	modified:   apps/web/src/app/page.tsx
-	modified:   apps/web/src/components/dashboard/RiskPanel.tsx
-	modified:   apps/web/src/components/three/Artery.tsx
-	modified:   apps/web/src/components/three/ArteryLabel.tsx
+	modified:   apps/web/src/app/results/page.tsx
 	modified:   apps/web/src/components/three/Heart.tsx
-	modified:   apps/web/src/components/three/Scene.tsx
-	modified:   apps/web/src/config/arteries.ts
-	modified:   apps/web/src/store/useRiskStore.ts
+	modified:   changes.txt
 
 Untracked files:
   (use "git add <file>..." to include in what will be committed)
-	apps/web/public/public/
-	apps/web/public/src/
-	apps/web/src/app/report/
-	apps/web/src/app/results/
-	apps/web/src/components/brand/
-	apps/web/src/components/report/
-	apps/web/src/components/results/
-	apps/web/src/components/web/
-	apps/web/src/config/brand.ts
-	apps/web/src/config/routes.ts
-	apps/web/src/lib/format.ts
-	apps/web/src/lib/mockResult.ts
-	apps/web/src/lib/snapshot.ts
-	apps/web/src/lib/types.ts
-	changes.txt
+	apps/web/public/apple-icon.png
+	apps/web/public/icon-dark-32x32.png
+	apps/web/public/icon-light-32x32.png
+	apps/web/public/icon.svg
+	apps/web/src/app/assess/
+	apps/web/src/app/loading.tsx
+	apps/web/src/app/not-found.tsx
+	apps/web/src/components/brand/Brand.tsx
+	apps/web/src/components/brand/SafetyBanner.tsx
+	apps/web/src/components/three/HeroScene.tsx
+	apps/web/src/components/ui/
+	apps/web/src/components/web/Footer.tsx
+	apps/web/src/components/web/Loader.tsx
+	apps/web/src/lib/utils.ts
 
 no changes added to commit (use "git add" and/or "git commit -a")

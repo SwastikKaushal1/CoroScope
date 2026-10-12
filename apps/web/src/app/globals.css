@@ -1,26 +1,76 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ------------------------------------------------------------------
+ * Design tokens: a standard, neutral light theme. Soft grey page (no bright
+ * white), slightly lighter cards, slate text, blue for actions/accents.
+ * Red/amber/green are reserved for risk (see lib/riskColor.ts).
+ * Names are historical: "navy" = primary blue, "heart" = accent blue.
+ * ------------------------------------------------------------------ */
+@theme {
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+  --color-paper: #eef1f5;
+  --color-surface: #f8fafc;
+  --color-sunken: #e6eaf0;
+  --color-line: #dbe1e9;
+  --color-line-strong: #c3cbd7;
+  --color-ink: #0f172a;
+  --color-ink-2: #475569;
+  --color-ink-3: #64748b;
+  --color-navy: #2563eb;
+  --color-navy-2: #1d4ed8;
+  --color-heart: #2563eb;
+  --color-heart-soft: #dbeafe;
+  --color-good: #15803d;
+  --color-good-soft: #dcfce7;
+  --color-warn: #a16207;
+  --color-warn-soft: #fef3c7;
+  --color-bad: #b91c1c;
+  --color-bad-soft: #fee2e2;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+:root { color-scheme: light; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html { scroll-behavior: smooth; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+::selection { background: #2563eb; color: #fff; }
+:focus-visible { outline: 2px solid var(--color-navy-2); outline-offset: 2px; border-radius: 6px; }
+input[type="range"] { accent-color: var(--color-navy); }
+
+/* Headings: same family as body, just bolder and tighter. */
+.font-display { font-weight: 700; letter-spacing: -0.025em; }
+.font-display em, h1 em, h2 em { font-style: normal; }
+
+/* Reusable pieces */
+.card { background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 1rem; box-shadow: 0 1px 2px rgba(15,23,42,.04); }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .5rem;
+  color: var(--color-heart); font-size: .75rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase;
+}
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  border-radius: .625rem; font-weight: 600; transition: background-color .15s, color .15s, border-color .15s, transform .15s;
+}
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--color-navy); color: #fff; }
+.btn-primary:hover { background: var(--color-navy-2); }
+.btn-primary:disabled { opacity: .35; pointer-events: none; }
+.btn-ghost { border: 1px solid var(--color-line-strong); color: var(--color-ink); background: var(--color-surface); }
+.btn-ghost:hover { border-color: var(--color-ink-3); background: var(--color-sunken); }
+
+/* Animations */
+.ecg { stroke-dasharray: 160; stroke-dashoffset: 160; animation: ecg 1.8s linear infinite; }
+@keyframes ecg { to { stroke-dashoffset: -160; } }
+.fade-up { animation: fadeUp .6s ease both; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .ecg, .fade-up { animation: none; stroke-dashoffset: 0; }
+  * { transition-duration: .01ms !important; }
 }

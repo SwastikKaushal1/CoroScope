@@ -27,10 +27,7 @@ interface RiskState {
   snapshot: string | null;
   setPatient: (p: Partial<Patient>) => void;
   setSnapshot: (s: string | null) => void;
-  setProbability: (id: ArteryId, value: number) => void;
-  setAll: (p: Probabilities) => void;
   setResult: (r: PredictionResponse) => void;
-  clearResult: () => void;
   select: (id: ArteryId | null) => void;
   hover: (id: ArteryId | null) => void;
 }
@@ -46,8 +43,6 @@ export const useRiskStore = create<RiskState>()(
       snapshot: null,
       setPatient: (p) => set((s) => ({ patient: { ...s.patient, ...p } })),
       setSnapshot: (snapshot) => set({ snapshot }),
-      setProbability: (id, value) => set((s) => ({ probabilities: { ...s.probabilities, [id]: value } })),
-      setAll: (p) => set({ probabilities: p }),
       setResult: (r) =>
         set({
           result: r,
@@ -60,7 +55,6 @@ export const useRiskStore = create<RiskState>()(
             RCA: r.predictions.RCA.probability,
           },
         }),
-      clearResult: () => set({ result: null, selected: null, hovered: null }),
       select: (id) => set({ selected: id }),
       hover: (id) => set({ hovered: id }),
     }),

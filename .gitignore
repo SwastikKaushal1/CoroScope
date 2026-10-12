@@ -1,28 +1,39 @@
-@'
-# Python
+# ---------- Python (apps/api) ----------
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
+venv/
 .pytest_cache/
 .ruff_cache/
 .ipynb_checkpoints/
+*.egg-info/
 
-# Node
+# ---------- Node / Next.js (apps/web) ----------
 node_modules/
 .next/
 out/
+build/
+next-env.d.ts
+*.tsbuildinfo
 
-# Env files
+# ---------- Environment files (keep the examples) ----------
 .env
-.env.local
+.env.*
+!.env.example
 
-# OS / editor
+# ---------- Logs ----------
+*.log
+npm-debug.log*
+
+# ---------- OS / editor ----------
 .DS_Store
 Thumbs.db
+desktop.ini
 .vscode/
 .idea/
 
-# Raw dataset (check its license before committing it)
-data/raw/*
-!data/raw/.gitkeep
-'@ | Set-Content -Path .gitignore -Encoding ascii
+# The Z-Alizadeh Sani dataset (data/z_alizadeh_sani.csv) is CC BY 4.0 and IS committed,
+# as are the trained models in apps/api/models/, so the project runs straight after cloning.
+
+# Local Windows launcher (not committed)
+start.bat

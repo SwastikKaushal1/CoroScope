@@ -1,13 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ContactShadows, Environment, Lightformer, Loader, OrbitControls } from "@react-three/drei";
-import { useRiskStore } from "@/store/useRiskStore";
+import { ContactShadows, Environment, Lightformer, OrbitControls, useProgress } from "@react-three/drei";
+import { useRiskStore, type Probabilities } from "@/store/useRiskStore";
 import { ARTERIES } from "@/config/arteries";
 import { registerCapture } from "@/lib/snapshot";
 import Heart from "./Heart";
+import { LabelContext, LabelProjector, LabelsOverlay, newRegistry } from "./Labels";
+import { ProbabilityOverride } from "./ProbabilityOverride";
 
 /**
  * Renders nothing. Registers a function that photographs the current 3D view
@@ -30,9 +32,9 @@ function CaptureBridge() {
         const ctx = out.getContext("2d");
         if (!ctx) return null;
         const g = ctx.createRadialGradient(w / 2, h * 0.42, 0, w / 2, h * 0.42, Math.max(w, h) * 0.7);
-        g.addColorStop(0, "#1c2a44");
-        g.addColorStop(0.7, "#0a1020");
-        g.addColorStop(1, "#060912");
+        g.addColorStop(0, "#ffffff");
+        g.addColorStop(0.7, "#eef2f7");
+        g.addColorStop(1, "#dfe5ee");
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(src, 0, 0, w, h);
@@ -91,6 +93,22 @@ function CameraRig() {
   return null;
 }
 
+/** Light overlay with download progress while the heart model (about 4 MB) loads. */
+function LoadProgress() {
+  const { active, progress } = useProgress();
+  if (!active && progress >= 100) return null;
+  return (
+    <div className="pointer-events-none absolute inset-0 grid place-items-center">
+      <div className="w-40 text-center">
+        <div className="h-1 overflow-hidden rounded-full bg-[#dbe1e9]">
+          <div className="h-full rounded-full bg-[#2563eb] transition-[width]" style={{ width: `${progress}%` }} />
+        </div>
+        <p className="mt-2 text-xs text-[#64748b]">Loading 3D heart… {Math.round(progress)}%</p>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The 3D stage: renderer settings, lights, reflections, ground shadow, camera.
  *
@@ -101,16 +119,17 @@ function CameraRig() {
  *   env  - procedural studio "softboxes" that give the glossy surface
  *          something to reflect. Built from Lightformers, so no HDR download.
  */
-export default function Scene() {
+export default function Scene({ probabilities = null, zoom = true }: { probabilities?: Probabilities | null; zoom?: boolean }) {
   const select = useRiskStore((s) => s.select);
   const selected = useRiskStore((s) => s.selected);
   const [touched, setTouched] = useState(false); // once the user grabs the heart, stop the slow idle turn
+  const labels = useMemo(() => newRegistry(), []); // shared by the 3D anchors and the DOM label pills
 
   return (
     // The canvas is transparent; this CSS gradient is the backdrop behind the heart.
     <div
       className="relative h-full w-full overflow-hidden"
-      style={{ background: "radial-gradient(circle at 50% 42%, #1c2a44 0%, #0a1020 70%, #060912 100%)" }}
+      style={{ background: "radial-gradient(circle at 50% 42%, #fbfcfe 0%, #eef2f7 62%, #dfe5ee 100%)" }}
     >
       <Canvas
         shadows="soft" // soft-edged shadow maps
@@ -119,13 +138,13 @@ export default function Scene() {
         gl={{ antialias: true, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
           gl.toneMapping = THREE.ACESFilmicToneMapping; // filmic highlight roll-off
-          gl.toneMappingExposure = 1.2;
+          gl.toneMappingExposure = 1.05;
         }}
         onPointerMissed={() => select(null)} // click on empty space = deselect
       >
         <CaptureBridge />
         <CameraRig />
-        <ambientLight intensity={0.3} />
+        <ambientLight intensity={0.45} />
 
         {/* KEY light + shadow settings */}
         <directionalLight
@@ -157,12 +176,17 @@ export default function Scene() {
           <Lightformer form="circle" intensity={1.4} color="#ffe9dd" position={[3, 2, 4]} scale={2} />
         </Environment>
 
-        <Suspense fallback={null}>
-          <Heart />
-        </Suspense>
+        <LabelContext.Provider value={labels}>
+          <ProbabilityOverride.Provider value={probabilities}>
+            <Suspense fallback={null}>
+              <Heart />
+            </Suspense>
+          </ProbabilityOverride.Provider>
+          <LabelProjector />
+        </LabelContext.Provider>
 
         {/* Soft blurred shadow on an invisible floor under the heart. */}
-        <ContactShadows position={[0, -1.25, 0]} opacity={0.5} blur={2.8} scale={5} far={2.2} color="#000010" />
+        <ContactShadows position={[0, -1.25, 0]} opacity={0.3} blur={2.6} scale={5} far={2.2} color="#1e293b" />
 
         <OrbitControls
           makeDefault
@@ -170,6 +194,7 @@ export default function Scene() {
           autoRotate={!touched && selected === null}
           autoRotateSpeed={0.7}
           enablePan={false}
+          enableZoom={zoom}
           enableDamping
           dampingFactor={0.08}
           rotateSpeed={0.8}
@@ -179,8 +204,8 @@ export default function Scene() {
         />
       </Canvas>
 
-      {/* Shows download progress while the heart loads (about 4 MB). */}
-      <Loader />
+      <LabelsOverlay registry={labels} probabilities={probabilities} />
+      <LoadProgress />
     </div>
   );
 }

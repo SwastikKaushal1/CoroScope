@@ -5,6 +5,12 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // react-three-fiber animates by mutating three.js objects inside useFrame; that is the
+    // intended pattern (no React re-render per frame), not a hooks bug.
+    files: ["src/components/three/**"],
+    rules: { "react-hooks/immutability": "off" },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

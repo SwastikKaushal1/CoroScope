@@ -1,107 +1,216 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, ArrowRight, Check, Crosshair, LockKeyhole, ScanLine, ShieldCheck, Sparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import Brand from '@/components/brand/Brand'
-import SafetyBanner from '@/components/brand/SafetyBanner'
-import { RESULTS_ROUTE } from '@/config/routes'
-import { MOCK_RESULT } from '@/lib/mockResult'
-import { useRiskStore } from '@/store/useRiskStore'
-import type { PredictionResponse } from '@/lib/types'
+import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { ArrowDown, ArrowRight, ArrowUp, Check, FileText, HeartPulse, MousePointerClick, ShieldCheck, Sparkles } from "lucide-react";
+import SiteFooter from "@/components/site/SiteFooter";
+import SiteHeader from "@/components/site/SiteHeader";
+import { ARTERIES } from "@/config/arteries";
+import { FORM_ROUTE, MODEL_ROUTE } from "@/config/routes";
+import { getMetrics } from "@/lib/api";
+import { MOCK_RESULT } from "@/lib/mockResult";
+import { plainReasons, riskWord, strength } from "@/lib/reasons";
+import { riskColorHex } from "@/lib/riskColor";
+import type { MetricsResponse } from "@/lib/types";
+import type { Probabilities } from "@/store/useRiskStore";
 
-const wizardSteps = ['Profile', 'Vitals', 'ECG / Lab', 'Review']
-const processingSteps = ['Validating clinical inputs...', 'Computing feature attributions...', 'Generating multi-vessel risk map...']
-const initialForm = { patientName: '', age: '58', sex: 'male', weight: '79', height: '170', systolic: '138', diastolic: '84', pulse: '76', chestPain: 'atypical', lvef: '58', diabetes: 'no', st: 'no', twave: 'no' }
-type FormState = typeof initialForm
+const Scene = dynamic(() => import("@/components/three/Scene"), {
+  ssr: false,
+  loading: () => <div className="grid h-full place-items-center text-sm text-ink-3">Loading 3D heart…</div>,
+});
 
-// Plain-English chest pain choices. The `value`s are unchanged, so the backend mapping still works.
-const chestPainOptions = [
-  { value: 'typical', label: 'Classic heart-type chest pain', hint: 'Pressure or tightness in the chest that comes on with effort or stress and eases with rest.' },
-  { value: 'atypical', label: 'Unusual chest pain', hint: 'Chest discomfort with only some features of heart pain, or no clear pattern.' },
-  { value: 'non-anginal', label: 'Chest pain not from the heart', hint: 'Sharp or stabbing pain, or pain that changes with breathing, movement or touch.' },
-  { value: 'asymptomatic', label: 'No chest pain', hint: 'The patient has no chest pain.' },
-]
-// BMI is calculated from weight (kg) and height (cm), never typed in.
-function calcBmi(weight: string, height: string) {
-  const w = parseFloat(weight), h = parseFloat(height) / 100
-  return w > 0 && h > 0 ? Math.round((w / (h * h)) * 10) / 10 : null
+/** Example profiles the hero heart cycles through, so visitors see the colours respond. */
+const DEMO: { label: string; p: Probabilities }[] = [
+  { label: "Three narrowed arteries", p: { LAD: MOCK_RESULT.predictions.LAD.probability, LCX: MOCK_RESULT.predictions.LCX.probability, RCA: MOCK_RESULT.predictions.RCA.probability } },
+  { label: "Healthy arteries", p: { LAD: 0.12, LCX: 0.08, RCA: 0.1 } },
+  { label: "One narrowed artery (front)", p: { LAD: 0.86, LCX: 0.22, RCA: 0.3 } },
+];
+
+function HeroHeart() {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setI((n) => (n + 1) % DEMO.length), 4500);
+    return () => clearInterval(t);
+  }, []);
+  const d = DEMO[i];
+  return (
+    <div className="relative h-[460px] overflow-hidden rounded-[2rem] border border-line bg-surface shadow-[0_30px_80px_-30px_rgba(15,23,42,0.25)] sm:h-[540px]">
+      <Scene probabilities={d.p} zoom={false} />
+      <div className="pointer-events-none absolute left-4 top-4 rounded-2xl border border-line bg-surface/90 px-4 py-2.5 backdrop-blur">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-ink-3">Example</p>
+        <p className="text-sm font-semibold text-ink">{d.label}</p>
+      </div>
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap gap-2">
+        {ARTERIES.map((a) => (
+          <span key={a.id} className="flex items-center gap-2 rounded-full border border-line bg-surface/90 px-3 py-1.5 text-xs text-ink backdrop-blur">
+            <span className="size-2 rounded-full" style={{ background: riskColorHex(d.p[a.id]) }} />
+            {a.supplies.replace(" of the heart", "")} · <b>{riskWord(d.p[a.id])}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
 }
 
-type FieldProps = { label: string; id: string; value: string; onChange: (value: string) => void; suffix?: string; hint?: string }
-const Hint = ({ text }: { text?: string }) => text ? <p className="text-xs leading-5 text-slate-500">{text}</p> : null
-function TextField({ label, id, value, onChange, suffix }: FieldProps) {
-  return <div className="flex flex-col gap-2"><Label htmlFor={id} className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{label}</Label><div className="relative"><Input id={id} value={value} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl border-slate-800 bg-slate-950/60 pr-14 font-mono text-sm text-white focus-visible:border-teal-400 focus-visible:ring-teal-400/20" />{suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-500">{suffix}</span>}</div></div>
-}
-function SelectField({ label, id, value, onChange, options, hint }: { label: string; id: string; value: string; onChange: (value: string) => void; options: { value: string; label: string }[]; hint?: string }) {
-  return <div className="flex flex-col gap-2"><Label htmlFor={id} className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{label}</Label><select id={id} value={value} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl border border-slate-800 bg-slate-900/50 px-3 font-mono text-sm text-white outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-400/20">{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><Hint text={hint} /></div>
-}
-function NumberField({ label, id, value, onChange, suffix, hint }: FieldProps) {
-  return <div className="flex flex-col gap-2"><Label htmlFor={id} className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">{label}</Label><div className="relative"><Input id={id} type="number" value={value} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl border-slate-800 bg-slate-900/50 px-3 pr-14 font-mono text-sm text-white focus-visible:border-teal-400 focus-visible:ring-teal-400/20" />{suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-xs text-slate-500">{suffix}</span>}</div><Hint text={hint} /></div>
-}
-function CardiacVisual() { return <div className="relative min-h-[380px] overflow-hidden rounded-[2rem] border border-white/10 bg-[#06171d] shadow-2xl shadow-teal-950/30"><div className="absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(94,234,212,.12)_1px,transparent_1px),linear-gradient(90deg,rgba(94,234,212,.12)_1px,transparent_1px)] [background-size:32px_32px]" /><div className="absolute inset-0 bg-[radial-gradient(circle_at_45%_50%,rgba(20,184,166,.18),transparent_48%)]" /><svg viewBox="0 0 700 380" className="relative h-full min-h-[380px] w-full" role="img" aria-label="Animated ECG pulse wave over a cardiovascular grid"><defs><filter id="pulse-glow"><feGaussianBlur stdDeviation="5" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter></defs><g fill="none" stroke="#164e63" strokeWidth="1"><path d="M65 65h570M65 125h570M65 185h570M65 245h570M65 305h570M65 35v310M145 35v310M225 35v310M305 35v310M385 35v310M465 35v310M545 35v310M625 35v310" /></g><path d="M70 190 C125 190 130 190 157 190 L175 190 L188 170 L202 216 L218 190 L262 190 L276 187 L288 120 L305 274 L323 190 L360 190 C390 190 398 190 425 190 L443 190 L457 170 L471 216 L487 190 L535 190 L550 184 L563 137 L578 250 L591 190 L630 190" fill="none" stroke="#5eead4" strokeWidth="3" filter="url(#pulse-glow)" strokeLinecap="round" strokeLinejoin="round"><animate attributeName="stroke-dasharray" values="0 1600;700 900;1600 0" dur="3.8s" repeatCount="indefinite" /></path><circle cx="305" cy="274" r="6" fill="#5eead4" opacity=".9"><animate attributeName="r" values="4;10;4" dur="1.4s" repeatCount="indefinite" /></circle></svg><div className="absolute bottom-6 left-6 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-teal-300"><span className="size-1.5 rounded-full bg-teal-300 shadow-[0_0_10px_#5eead4]" />Live ECG signal layer</div><div className="absolute right-6 top-6 font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">CARDIO / 01</div></div> }
-function GlobalImpactSection() { return <section id="impact" className="border-y border-slate-800/50 bg-slate-900/30 px-5 py-24 lg:px-10"><div className="mx-auto max-w-7xl"><h2 className="text-center text-3xl font-semibold tracking-tight text-white md:text-4xl">The Scale of Cardiovascular Disease.</h2><p className="mt-4 mb-16 text-center text-slate-400">Why multi-vessel visualization is critical for modern clinical review.</p><div className="mx-auto grid max-w-5xl grid-cols-1 gap-12 text-center md:grid-cols-3"><div><p className="font-mono text-5xl font-light text-teal-400">17.9M</p><p className="mt-4 text-sm uppercase tracking-widest text-slate-400">Global deaths annually</p></div><div><p className="font-mono text-5xl font-light text-teal-400">1 in 3</p><p className="mt-4 text-sm uppercase tracking-widest text-slate-400">Attributed to cardiovascular disease</p></div><div><p className="font-mono text-5xl font-light text-teal-400">&gt;50%</p><p className="mt-4 text-sm uppercase tracking-widest text-slate-400">Cases involve multi-vessel stenosis</p></div></div></div></section> }
-function WhySection() { const cards = [{ title: 'Multi-vessel mapping', text: 'Predict stenosis probabilities across LAD, LCX, and RCA territories.', icon: '01' }, { title: 'Explainable AI (SHAP)', text: 'Transparent feature attribution so clinicians understand exactly what drives the risk model.', icon: '02' }, { title: 'Non-invasive profiling', text: 'Driven by standard demographic, vital, laboratory, and ECG data.', icon: '03' }]; return <><GlobalImpactSection /><section id="why" className="mx-auto max-w-7xl scroll-mt-24 border-t border-white/10 px-5 py-24 lg:px-10"><div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-24"><div><p className="eyebrow"><Crosshair className="size-4" /> The clinical gap</p><h2 className="mt-4 text-3xl font-semibold tracking-tight text-white md:text-5xl">Moving beyond raw percentages.</h2></div><div className="relative max-w-xl overflow-hidden rounded-2xl border border-white/10 border-l-teal-400/80 bg-slate-900/50 p-7 backdrop-blur-md"><div className="absolute inset-y-0 left-0 w-px bg-gradient-to-b from-teal-300 via-teal-500 to-transparent" /><p className="text-base leading-relaxed text-slate-300 md:text-lg">Traditional risk scores compress a complex cardiovascular profile into a single number. Coroscope adds spatial context, helping clinical teams see which vessel territories may need a closer look before formal diagnostic imaging.</p></div></div></section><div aria-hidden="true" className="mx-auto my-16 h-px w-full max-w-4xl bg-gradient-to-r from-transparent via-slate-700 to-transparent" /><section id="capabilities" className="mx-auto mt-24 max-w-7xl scroll-mt-24 px-5 pb-24 lg:px-10"><div className="mb-10"><p className="eyebrow">Core capabilities</p><h2 className="mt-4 text-2xl font-semibold text-white md:text-3xl">A clearer signal for clinical review.</h2></div><div className="grid gap-4 md:grid-cols-3">{cards.map((card, index) => <motion.article key={card.title} initial={{ opacity: 0, y: 14 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: index * .1 }} className="glass-panel rounded-2xl p-7"><div className="mb-12 flex items-center justify-between"><span className="font-mono text-sm text-teal-300">{card.icon}</span><span className="size-2 rounded-full bg-teal-400 shadow-[0_0_12px_#5eead4]" /></div><h3 className="text-lg font-medium text-white">{card.title}</h3><p className="mt-3 text-sm leading-6 text-slate-400">{card.text}</p></motion.article>)}</div></section></> }
-function AssessmentWizard({ form, update, onSubmit, onCancel }: { form: FormState; update: (key: keyof FormState) => (value: string) => void; onSubmit: () => void; onCancel: () => void }) {
-  const [step, setStep] = useState(0)
-  const bmi = calcBmi(form.weight, form.height)
-  const yn = (v: string) => (v === 'yes' ? 'Yes' : 'No')
-  const reviewRows: [string, string][] = [
-    ['Patient', form.patientName || '—'], ['Age', `${form.age} y`], ['Sex', form.sex === 'female' ? 'Female' : 'Male'],
-    ['Weight / Height', `${form.weight} kg / ${form.height} cm`], ['BMI (calculated)', bmi ? `${bmi} kg/m²` : '—'],
-    ['Blood pressure', `${form.systolic}/${form.diastolic} mmHg`], ['Pulse', `${form.pulse} bpm`],
-    ['Chest pain', chestPainOptions.find((o) => o.value === form.chestPain)?.label ?? form.chestPain],
-    ['LVEF', `${form.lvef} %`], ['Diabetes', yn(form.diabetes)], ['ST elevation', yn(form.st)], ['T-wave inversion', yn(form.twave)],
-  ]
-  const fields = step === 0 ? <div className="flex flex-col gap-5"><div className="rounded-2xl border border-teal-400/15 bg-teal-400/[.04] p-4"><div className="flex flex-col gap-2"><Label htmlFor="patientName" className="text-xs font-medium uppercase tracking-[0.14em] text-teal-200">Patient name</Label><Input id="patientName" value={form.patientName} onChange={(event) => update('patientName')(event.target.value)} placeholder="Enter patient name" required aria-required="true" className="h-11 rounded-xl border-slate-800 bg-slate-950/60 text-white placeholder:text-slate-600" /></div><p className="mt-2 text-xs text-slate-500">Used to identify this report. Avoid medical record numbers.</p></div><div className="flex flex-col gap-4"><div className="flex items-center justify-between"><Label htmlFor="age" className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Age</Label><div className="rounded-xl border border-slate-800 bg-slate-950/70 px-5 py-3 font-mono text-lg text-white"><Input id="age" type="number" value={form.age} onChange={(event) => update('age')(event.target.value)} className="inline h-auto w-12 border-0 bg-transparent p-0 text-right font-mono text-lg text-white shadow-none focus-visible:ring-0" /><span className="ml-3 text-sm text-slate-500">y</span></div></div><input aria-label="Age slider" type="range" min="18" max="100" value={form.age} onChange={(event) => update('age')(event.target.value)} className="h-1 w-full accent-teal-300" /><div className="flex justify-between font-mono text-xs text-slate-600"><span>18y</span><span>100y</span></div></div><div className="grid gap-8 md:grid-cols-2"><div className="flex flex-col gap-3"><Label className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400">Sex</Label><div className="grid grid-cols-2 rounded-2xl border border-slate-800 bg-slate-950/60 p-2"><button type="button" onClick={() => update('sex')('male')} className={`rounded-xl px-4 py-4 text-sm font-medium transition ${form.sex === 'male' ? 'bg-teal-300 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Male</button><button type="button" onClick={() => update('sex')('female')} className={`rounded-xl px-4 py-4 text-sm font-medium transition ${form.sex === 'female' ? 'bg-teal-300 text-slate-950' : 'text-slate-400 hover:text-white'}`}>Female</button></div></div><NumberField label="Weight" id="weight" value={form.weight} onChange={update('weight')} suffix="kg" /></div><div className="grid gap-6 md:grid-cols-2"><NumberField label="Height" id="height" value={form.height} onChange={update('height')} suffix="cm" hint="Used with weight to calculate BMI automatically." /><div className="flex flex-col gap-2"><Label className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">BMI (calculated)</Label><div className="flex h-12 items-center rounded-xl border border-slate-800 bg-slate-950/60 px-3 font-mono text-sm text-white">{bmi ? `${bmi} kg/m²` : '—'}</div></div></div><div className="max-w-md"><div className="mb-3 flex items-center justify-between text-xs uppercase tracking-[0.14em]"><span className="text-slate-500">Body composition</span><span className="text-teal-300">Healthy range 18.5–24.9</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-800"><div style={{ width: `${bmi ? Math.min(100, Math.max(4, ((bmi - 15) / 25) * 100)) : 0}%` }} className="h-full rounded-full bg-gradient-to-r from-teal-300 via-emerald-200 to-amber-300" /></div></div></div> : step === 1 ? <div className="flex flex-col gap-8"><div className="grid grid-cols-1 gap-6 md:grid-cols-3"><NumberField label="Systolic blood pressure" id="systolic" value={form.systolic} onChange={update('systolic')} suffix="mmHg" /><NumberField label="Diastolic blood pressure" id="diastolic" value={form.diastolic} onChange={update('diastolic')} suffix="mmHg" /><NumberField label="Pulse rate" id="pulse" value={form.pulse} onChange={update('pulse')} suffix="bpm" /></div><SelectField label="Chest pain type" id="chestPain" value={form.chestPain} onChange={update('chestPain')} options={chestPainOptions} hint={chestPainOptions.find((o) => o.value === form.chestPain)?.hint} /></div> : step === 2 ? <div className="flex flex-col gap-6"><div className="rounded-2xl border border-teal-400/15 bg-teal-400/[.04] p-4 text-sm leading-6 text-slate-300"><p className="font-medium text-teal-200">What goes on this page?</p><p className="mt-1 text-slate-400">These values come from the patient's <span className="text-slate-200">ECG</span> (the heart-rhythm tracing) and <span className="text-slate-200">echocardiogram</span> (heart ultrasound) reports. Copy them from the report. If you don't have a value, leave the default: the model fills gaps with typical values.</p></div><div className="grid gap-6 md:grid-cols-2"><NumberField label="LVEF %" id="lvef" value={form.lvef} onChange={update('lvef')} suffix="%" hint="Ejection fraction: the % of blood the left ventricle pumps out with each beat. Listed as “EF” on the echo report. Normal is about 55–70%." /><SelectField label="Diabetes" id="diabetes" value={form.diabetes} onChange={update('diabetes')} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} hint="Choose Yes if the patient has diagnosed diabetes or takes diabetes medication." /><SelectField label="ST elevation" id="st" value={form.st} onChange={update('st')} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} hint="On the ECG, the ST segment (the flat stretch after the main spike) sits above the baseline. Choose Yes only if the ECG report says so." /><SelectField label="T-wave inversion" id="twave" value={form.twave} onChange={update('twave')} options={[{ value: 'yes', label: 'Yes' }, { value: 'no', label: 'No' }]} hint="On the ECG, the T wave (the small bump after the spike) points downward instead of up. Choose Yes only if the report mentions it." /></div></div> : <div className="grid gap-4 sm:grid-cols-2">{reviewRows.map(([label, value]) => <div key={label} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4"><p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">{label}</p><p className="mt-2 font-mono text-sm text-white">{value}</p></div>)}</div>
-  return <section className="w-full max-w-4xl px-4"><div className="rounded-[2rem] border border-slate-800 bg-[#0b1020]/90 p-5 shadow-2xl shadow-black/30 md:p-6 lg:p-7"><div className="flex items-start justify-between"><div><p className="font-mono text-sm font-medium uppercase tracking-[0.28em] text-teal-300">Step {step + 1} / 4</p><h1 className="mt-6 text-3xl font-semibold tracking-tight text-white">{wizardSteps[step]}</h1></div><LockKeyhole className="mt-1 size-7 text-slate-600" /></div><div className="mt-7 border-t border-slate-800" /><div className="mt-7"><form onSubmit={(event) => { event.preventDefault(); if (step < wizardSteps.length - 1) setStep((value) => value + 1); else onSubmit() }} className="grid gap-10">{fields}<div className="flex items-center justify-between border-t border-slate-800 pt-8"><Button type="button" variant="ghost" onClick={() => step === 0 ? onCancel() : setStep((value) => value - 1)} className="text-slate-400 hover:text-white"><ArrowLeft data-icon="inline-start" />{step === 0 ? 'Cancel' : 'Back'}</Button>{step === wizardSteps.length - 1 ? <Button type="submit" className="bg-teal-300 px-6 font-semibold text-slate-950 hover:bg-teal-200">Run prediction engine<ArrowRight data-icon="inline-end" /></Button> : <Button type="submit" className="bg-teal-300 px-6 font-semibold text-slate-950 hover:bg-teal-200">Continue<ArrowRight data-icon="inline-end" /></Button>}</div></form></div></div></section>
-}
-function ProcessingState({ error, onBack, onDemo }: { error?: string; onBack?: () => void; onDemo?: () => void }) { const [active, setActive] = useState(0); useEffect(() => { const timer = setInterval(() => setActive((value) => Math.min(value + 1, 2)), 850); return () => clearInterval(timer) }, []); return <main className="flex min-h-screen items-center justify-center bg-slate-950 px-5 text-slate-100"><div className="w-full max-w-lg text-center"><div className="relative mx-auto mb-10 flex size-28 items-center justify-center rounded-full border border-teal-400/30 bg-teal-400/5"><div className="absolute inset-2 animate-ping rounded-full border border-teal-400/20" /><ScanLine className="relative size-9 text-teal-300" /></div>{error && <div role="alert" className="mb-8 rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-200">{error}<div className="mt-3 flex justify-center gap-3"><Button type="button" variant="ghost" onClick={onBack} className="text-slate-300 hover:text-white">Back to form</Button><Button type="button" onClick={onDemo} className="bg-teal-300 font-semibold text-slate-950 hover:bg-teal-200">Use demo data</Button></div></div>}<p className="eyebrow">Prediction engine active</p><h1 className="mt-4 text-3xl font-semibold text-white">Mapping cardiovascular risk.</h1><div className="mt-10 flex flex-col gap-4 text-left">{processingSteps.map((item, index) => <div key={item} className={`flex items-center gap-3 rounded-xl border px-4 py-3 font-mono text-xs ${index <= active ? 'border-teal-400/20 bg-teal-400/[.05] text-teal-200' : 'border-white/5 text-slate-600'}`}>{index < active ? <Check className="size-4" /> : <span className={`size-2 rounded-full ${index === active ? 'animate-pulse bg-teal-300' : 'bg-slate-700'}`} />}{item}</div>)}</div></div></main> }
-function LegalPage({ kind, onBack }: { kind: 'privacy' | 'terms'; onBack: () => void }) { const privacy = kind === 'privacy'; return <main className="min-h-screen bg-slate-950 px-5 py-8 text-slate-100"><div className="mx-auto max-w-3xl"><Brand onClick={onBack} /><article className="mt-12 rounded-3xl border border-white/10 bg-slate-900/60 p-7 md:p-10"><p className="eyebrow">Coroscope Clinical Systems</p><h1 className="mt-4 text-3xl font-semibold text-white">{privacy ? 'Privacy Policy' : 'Terms of Use'}</h1><p className="mt-3 text-sm text-slate-500">Effective October 7, 2026</p>{privacy ? <div className="mt-8 flex flex-col gap-6 text-sm leading-7 text-slate-300"><p>Coroscope is a clinical decision-support prototype. Information entered into the assessment is used to calculate and display the requested risk visualization in the current session.</p><p>Do not enter names, medical record numbers, or other directly identifying information. We do not use this prototype to make autonomous diagnoses or treatment decisions.</p><p>For questions about data handling, contact the Coroscope Clinical Systems team before using the tool with real patient information.</p></div> : <div className="mt-8 flex flex-col gap-6 text-sm leading-7 text-slate-300"><p>This tool is provided for educational and decision-support purposes only. It is not medical advice, a diagnosis, or a replacement for qualified clinical judgment or formal diagnostic testing.</p><p>You are responsible for reviewing all inputs and interpreting outputs in the appropriate clinical context. Never use this prototype for emergency decisions.</p><p>By using Coroscope, you acknowledge these limitations and agree to use the assessment responsibly.</p></div>}<Button type="button" onClick={onBack} className="mt-9 bg-teal-300 font-semibold text-slate-950 hover:bg-teal-200">Return to home</Button></article></div></main> }
-function LandingPage({ onStart, onHome, onLegal }: { onStart: () => void; onHome: () => void; onLegal: (kind: 'privacy' | 'terms') => void }) { return <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-100"><SafetyBanner /><header className="sticky top-0 z-20 mx-auto flex max-w-7xl items-center justify-between border-b border-white/10 bg-slate-950/85 px-5 py-4 backdrop-blur-xl lg:px-10"><Brand onClick={onHome} /><nav aria-label="Primary navigation" className="hidden items-center gap-7 md:flex"><a href="#why" className="text-xs text-slate-400 transition-colors hover:text-teal-300">Why Coroscope</a><a href="#capabilities" className="text-xs text-slate-400 transition-colors hover:text-teal-300">Capabilities</a></nav><div className="flex items-center gap-3"><div className="hidden items-center gap-2 text-xs text-slate-500 lg:flex"><ShieldCheck className="size-4 text-teal-400" /> Secure workspace</div><Button type="button" onClick={onStart} size="sm" className="bg-teal-300 font-semibold text-slate-950 hover:bg-teal-200">Start assessment</Button></div></header><section className="mx-auto grid max-w-7xl items-center gap-12 px-5 pb-24 pt-10 lg:grid-cols-[.9fr_1.1fr] lg:px-10 lg:pt-20"><motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: .65 }}><div className="eyebrow"><Sparkles className="size-3.5" /> Advanced cardiovascular risk visualization</div><h1 className="mt-6 max-w-2xl text-5xl font-semibold tracking-[-.05em] text-white md:text-7xl">See risk<br /><span className="text-teal-300">before it escalates.</span></h1><p className="mt-7 max-w-xl text-base leading-7 text-slate-400 md:text-lg">Coroscope turns patient clinical data into a clear, multi-vessel cardiovascular risk visualization for more informed review.</p><Button onClick={onStart} className="mt-9 h-12 rounded-xl bg-teal-400 px-6 font-semibold text-slate-950 shadow-lg shadow-teal-950/40 hover:bg-teal-300">Start clinical assessment <ArrowRight data-icon="inline-end" /></Button></motion.div><motion.div initial={{ opacity: 0, scale: .97 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: .8, delay: .12 }}><CardiacVisual /></motion.div></section><WhySection /><footer className="border-t border-white/10 px-5 py-8 lg:px-10"><div className="mx-auto flex max-w-7xl flex-col gap-4 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between"><span>© 2026 Coroscope Clinical Systems</span><nav className="flex gap-5"><a href="#privacy" onClick={(event) => { event.preventDefault(); onLegal('privacy') }} className="transition-colors hover:text-teal-400">Privacy</a><a href="#terms" onClick={(event) => { event.preventDefault(); onLegal('terms') }} className="transition-colors hover:text-teal-400">Terms</a></nav></div></footer></main> }
-function ClinicalWorkspace({ form, update, onSubmit, onCancel }: { form: FormState; update: (key: keyof FormState) => (value: string) => void; onSubmit: () => void; onCancel: () => void }) { return <main className="min-h-screen bg-slate-950 text-slate-100"><SafetyBanner /><header className="mx-auto flex max-w-7xl items-center justify-between px-5 py-6 lg:px-10"><Brand onClick={onCancel} /><Button variant="ghost" onClick={onCancel} className="text-slate-400 hover:bg-white/5 hover:text-white">Cancel / Return</Button></header><div className="flex min-h-[calc(100vh-103px)] items-start justify-center py-5 lg:items-center lg:py-6"><AssessmentWizard form={form} update={update} onSubmit={onSubmit} onCancel={onCancel} /></div></main> }
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
+const STEPS = [
+  { title: "Answer six questions", text: "Age, diabetes, blood pressure, smoking and chest pain, in everyday words. About 30 seconds, no reports needed." },
+  { title: "Four AI models check your heart", text: "One for overall heart disease and one for each main artery. Each is trained on 303 real patients who had their arteries examined." },
+  { title: "See it on a 3D heart", text: "Each artery lights up green, amber or red. Tap one to see what raised or lowered its risk, in plain words." },
+];
 
-// Map this form's fields to the backend's feature names (blank/unknown ones are imputed by the model).
-function toPayload(f: FormState) {
-  const n = (v: string) => (v.trim() === '' || isNaN(+v) ? undefined : +v)
-  const body: Record<string, number | string | undefined> = {
-    Age: n(f.age), Sex: f.sex === 'female' ? 'Female' : 'Male', Weight: n(f.weight), Length: n(f.height), BMI: calcBmi(f.weight, f.height) ?? undefined, BP: n(f.systolic), PR: n(f.pulse),
-    'EF-TTE': n(f.lvef), DM: f.diabetes === 'yes' ? 1 : 0, 'ST Elevation': f.st === 'yes' ? 1 : 0, 'T inversion': f.twave === 'yes' ? 1 : 0,
-    'Typical Chest Pain': f.chestPain === 'typical' ? 1 : 0, Atypical: f.chestPain === 'atypical' ? 1 : 0, Nonanginal: f.chestPain === 'non-anginal' ? 1 : 0,
-  }
-  return Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))
-}
+const FEATURES = [
+  { icon: MousePointerClick, title: "Your heart in 3D", text: "Rotate, zoom and tap each artery. Blood flow visibly slows in arteries that are likely narrowed." },
+  { icon: Sparkles, title: "Reasons you can read", text: "Explainable AI (SHAP) turns every prediction into short sentences, like “your blood pressure raised the risk”." },
+  { icon: HeartPulse, title: "Your action plan", text: "Steps tailored to your answers, plus changes the models re-test on your own data, like how much quitting smoking could lower your risk." },
+  { icon: FileText, title: "A report for your doctor", text: "One click makes a clean, printable PDF with your 3D heart, results and reasons." },
+];
 
-export default function Page() {
-  const router = useRouter()
-  const [view, setView] = useState<'landing' | 'workspace' | 'privacy' | 'terms'>('landing')
-  const [form, setForm] = useState(initialForm)
-  const [processing, setProcessing] = useState(false)
-  const [error, setError] = useState('')
-  const update = (key: keyof FormState) => (value: string) => setForm((current) => ({ ...current, [key]: value }))
+export default function LandingPage() {
+  const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
+  useEffect(() => { getMetrics().then(setMetrics).catch(() => {}); }, []);
+  const auc = (t: "CAD" | "LAD" | "LCX" | "RCA") => metrics?.targets[t].test.roc_auc;
+  const cadCv = metrics ? metrics.targets.CAD.cv[metrics.targets.CAD.model].roc_auc.mean : 0.93;
+  const reasons = plainReasons(MOCK_RESULT.predictions.CAD.explanation, 4);
 
-  const finish = (data: PredictionResponse) => {
-    // Keep the name/age/sex typed in the form on the report header, then open the results page.
-    useRiskStore.getState().setResult({ ...data, patient: { name: form.patientName, age: form.age, sex: form.sex === 'female' ? 'Female' : 'Male', ...data.patient } })
-    router.push(RESULTS_ROUTE)
-  }
-  const submit = async () => {
-    setProcessing(true); setError('')
-    try {
-      const res = await fetch(`${API}/predict`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(toPayload(form)) })
-      if (!res.ok) throw new Error(`Server returned ${res.status}`)
-      finish(await res.json())
-    } catch (e) {
-      setError(`${(e as Error).message}. Is the backend running?`)
-    }
-  }
+  return (
+    <main className="min-h-dvh overflow-x-hidden">
+      <SiteHeader />
 
-  if (processing) return <ProcessingState error={error} onBack={() => { setProcessing(false); setError('') }} onDemo={() => finish(MOCK_RESULT)} />
-  if (view === 'privacy' || view === 'terms') return <LegalPage kind={view} onBack={() => setView('landing')} />
-  return view === 'landing' ? <LandingPage onStart={() => setView('workspace')} onHome={() => setView('landing')} onLegal={setView} /> : <ClinicalWorkspace form={form} update={update} onSubmit={submit} onCancel={() => setView('landing')} />
+      {/* Hero */}
+      <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-16 pt-10 sm:px-6 lg:grid-cols-[1fr_1.05fr] lg:pt-16">
+        <div>
+          <p className="eyebrow"><HeartPulse className="size-4" /> Explainable heart AI</p>
+          <h1 className="font-display mt-5 text-5xl leading-[1.02] text-ink sm:text-6xl lg:text-7xl">
+            See where your heart <em className="text-heart">may be at risk.</em>
+          </h1>
+          <p className="mt-6 max-w-lg text-lg leading-8 text-ink-2">
+            Answer six simple questions. Coroscope estimates the chance of narrowed heart arteries, shows <b className="font-semibold text-ink">which</b> artery
+            on a 3D heart, and explains <b className="font-semibold text-ink">why</b> in plain words.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            <Link href={FORM_ROUTE} className="btn btn-primary h-13 px-7 text-base">Check my heart <ArrowRight className="size-4" /></Link>
+            <Link href="#how" className="btn btn-ghost h-13 px-6 text-base">How it works</Link>
+          </div>
+          <ul className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-2">
+            {["About 30 seconds", "No sign-up", "Nothing is stored"].map((t) => (
+              <li key={t} className="flex items-center gap-1.5"><Check className="size-4 text-good" />{t}</li>
+            ))}
+          </ul>
+        </div>
+        <div><HeroHeart /></div>
+      </section>
+
+      {/* Proof strip */}
+      <section className="border-y border-line bg-surface">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-8 sm:px-6 md:grid-cols-4">
+          {[
+            [cadCv.toFixed(2), "accuracy score (ROC-AUC) for heart disease, cross-validated"],
+            ["303", "real patients the models learned from"],
+            ["4", "AI models: overall heart + three arteries"],
+            ["< 1 s", "from your answers to your 3D heart"],
+          ].map(([v, l]) => (
+            <div key={l}>
+              <p className="font-display text-4xl text-ink">{v}</p>
+              <p className="mt-1 text-xs leading-5 text-ink-3">{l}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section id="how" className="mx-auto max-w-6xl scroll-mt-24 px-4 py-24 sm:px-6">
+        <p className="eyebrow">How it works</p>
+        <h2 className="font-display mt-4 max-w-2xl text-4xl leading-tight text-ink md:text-5xl">Three steps, from answers to understanding.</h2>
+        <ol className="mt-12 grid gap-5 md:grid-cols-3">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="card p-7">
+              <span className="grid size-10 place-items-center rounded-full bg-heart-soft font-display text-xl text-heart">{i + 1}</span>
+              <h3 className="mt-6 text-lg font-semibold text-ink">{s.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-ink-2">{s.text}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* Reasons preview */}
+      <section className="bg-surface">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
+          <div>
+            <p className="eyebrow">Explainable, not a black box</p>
+            <h2 className="font-display mt-4 text-4xl leading-tight text-ink md:text-5xl">Every result comes with its reasons.</h2>
+            <p className="mt-5 text-lg leading-8 text-ink-2">
+              We use SHAP, a standard method for explaining AI, to show which of your answers pushed the risk up or down.
+              Doctors get the full technical breakdown; everyone else gets sentences like these.
+            </p>
+          </div>
+          <div className="card p-6 shadow-[0_20px_60px_-30px_rgba(15,23,42,0.2)]">
+            <p className="text-xs font-medium uppercase tracking-wider text-ink-3">Example · a real patient from the dataset</p>
+            <ul className="mt-4 flex flex-col gap-3">
+              {reasons.map((r) => {
+                const Icon = r.up ? ArrowUp : ArrowDown;
+                return (
+                  <li key={r.key} className="flex items-start gap-3 rounded-2xl bg-paper p-4 text-sm leading-6 text-ink-2">
+                    <span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${r.up ? "bg-bad-soft text-bad" : "bg-good-soft text-good"}`}><Icon className="size-4" /></span>
+                    <span><b className="font-semibold text-ink">{r.label}</b> ({r.value}) {r.up ? "raised" : "lowered"} the risk {strength(r.share)}.</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section className="mx-auto max-w-6xl px-4 py-24 sm:px-6">
+        <h2 className="font-display max-w-2xl text-4xl leading-tight text-ink md:text-5xl">Made for people, trusted by numbers.</h2>
+        <div className="mt-12 grid gap-5 sm:grid-cols-2">
+          {FEATURES.map((f) => (
+            <article key={f.title} className="card flex gap-5 p-7">
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-heart-soft text-heart"><f.icon className="size-5" /></span>
+              <div>
+                <h3 className="font-semibold text-ink">{f.title}</h3>
+                <p className="mt-1.5 text-sm leading-6 text-ink-2">{f.text}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      {/* Accuracy */}
+      <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
+        <div className="card grid gap-10 p-8 md:p-12 lg:grid-cols-[1.1fr_1fr]">
+          <div>
+            <p className="eyebrow"><ShieldCheck className="size-4" /> Tested honestly</p>
+            <h2 className="font-display mt-4 text-4xl leading-tight text-ink">How accurate is it?</h2>
+            <p className="mt-4 leading-7 text-ink-2">
+              We kept 20% of patients aside and tested the models on them only once, at the very end. ROC-AUC measures how
+              well a model tells sick from healthy: 0.5 is a coin flip, 1.0 is perfect.
+            </p>
+            <Link href={MODEL_ROUTE} className="btn btn-ghost mt-6 h-11 px-5 text-sm">See the full evaluation <ArrowRight className="size-4" /></Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 self-center">
+            {(["CAD", "LAD", "LCX", "RCA"] as const).map((t) => (
+              <div key={t} className="rounded-2xl bg-paper p-5">
+                <p className="text-xs text-ink-3">{t === "CAD" ? "Heart disease overall" : ARTERIES.find((a) => a.id === t)!.supplies.replace(" of the heart", "") + " artery"}</p>
+                <p className="font-display mt-1 text-4xl text-ink">{auc(t) !== undefined ? auc(t)!.toFixed(2) : "—"}</p>
+                <p className="text-[11px] text-ink-3">ROC-AUC on unseen patients</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="border-t border-line bg-surface">
+        <div className="mx-auto flex max-w-6xl flex-col items-center px-4 py-20 text-center sm:px-6">
+          <h2 className="font-display text-4xl text-ink md:text-5xl">Your heart, explained in 30 seconds.</h2>
+          <p className="mt-4 max-w-lg text-ink-2">No reports, no sign-up. Results are a guide to talk through with a doctor, not a diagnosis.</p>
+          <Link href={FORM_ROUTE} className="btn btn-primary mt-8 h-13 px-7 text-base">Check my heart <ArrowRight className="size-4" /></Link>
+        </div>
+      </section>
+
+      <SiteFooter />
+    </main>
+  );
 }

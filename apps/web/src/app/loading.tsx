@@ -1,2 +1,2 @@
-import Loader from "@/components/web/Loader";
-export default function Loading() { return <Loader label="Loading…" />; }
+import Loader from "@/components/site/Loader";
+export default function Loading() { return <main className="min-h-dvh bg-paper"><Loader label="Loading…" /></main>; }

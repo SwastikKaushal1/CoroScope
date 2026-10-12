@@ -1,0 +1,10 @@
+# Overrides compose.yaml to run optimized production builds (no hot reload).
+services:
+  api:
+    build:
+      target: prod
+  web:
+    build:
+      target: prod
+      args:
+        API_INTERNAL_URL: http://api:8000

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import type { ArteryDef } from "@/config/arteries";
 import { riskColor } from "@/lib/riskColor";
 import { useRiskStore } from "@/store/useRiskStore";
-import ArteryLabel from "./ArteryLabel";
+import { LabelAnchor } from "./Labels";
+import { useProbabilityOverride } from "./ProbabilityOverride";
 
 const VISIBLE_RADIUS = 0.026; // base radius of the drawn vessel (scene units)
 const TAPER_START = 1.25; // vessels are thickest where they leave the aorta...
@@ -33,6 +34,58 @@ function taperedTube(curve: THREE.CatmullRomCurve3, segs: number, radius: number
   return g;
 }
 
+const FLOW_DOTS = 7;
+const _m = new THREE.Matrix4();
+const _p = new THREE.Vector3();
+
+/**
+ * Blood flow: small glowing cells travelling along the vessel. Flow slows as stenosis
+ * probability rises (a narrowed artery carries less blood), so risk is visible as motion too.
+ */
+function BloodFlow({ curve, probability, dimmed }: { curve: THREE.CatmullRomCurve3; probability: number; dimmed: boolean }) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const offsets = useMemo(() => Array.from({ length: FLOW_DOTS }, (_, i) => i / FLOW_DOTS), []);
+  const phase = useRef(0);
+  useFrame((_, delta) => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    phase.current = (phase.current + delta * 0.2 * (1 - 0.8 * probability)) % 1;
+    offsets.forEach((o, i) => {
+      const t = (o + phase.current) % 1;
+      curve.getPointAt(t, _p);
+      const scale = Math.sin(Math.PI * t) * (1.25 - 0.8 * t); // fade in at the root, shrink toward the tip
+      _m.makeScale(scale, scale, scale).setPosition(_p);
+      mesh.setMatrixAt(i, _m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    (mesh.material as THREE.MeshBasicMaterial).opacity = dimmed ? 0.15 : 0.95;
+  });
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, FLOW_DOTS]} renderOrder={2}>
+      <sphereGeometry args={[0.017, 10, 8]} />
+      <meshBasicMaterial color="#fff4f2" transparent depthWrite={false} toneMapped={false} />
+    </instancedMesh>
+  );
+}
+
+/** Pulsing halo where a likely-narrowed vessel is labelled. Shown only above 50% probability. */
+function Hotspot({ position, probability }: { position: THREE.Vector3; probability: number }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    const m = ref.current;
+    if (!m) return;
+    const t = (clock.elapsedTime * 0.9) % 1;
+    m.scale.setScalar(1 + t * 1.6);
+    (m.material as THREE.MeshBasicMaterial).opacity = (1 - t) * 0.45 * probability;
+  });
+  return (
+    <mesh ref={ref} position={position}>
+      <sphereGeometry args={[0.04, 20, 14]} />
+      <meshBasicMaterial color="#d7263d" transparent depthWrite={false} toneMapped={false} />
+    </mesh>
+  );
+}
+
 interface Props {
   def: ArteryDef;
   /** Curve already snapped onto the heart surface (see Heart.tsx). */
@@ -40,8 +93,8 @@ interface Props {
 }
 
 /**
- * One coronary vessel: a glossy tube, an invisible fat "hit" tube for the
- * pointer, two rounded end caps and a floating HTML label.
+ * One coronary vessel: a glossy tube, animated blood flow, a risk hotspot, an invisible
+ * fat "hit" tube for the pointer, two rounded end caps and a label anchor (see Labels.tsx).
  *
  * React state vs. per-frame animation:
  *   - Probability / selected / hovered come from the Zustand store (React state).
@@ -49,9 +102,12 @@ interface Props {
  *     This gives smooth fades at 60fps without re-rendering React each frame.
  */
 export default function Artery({ def, curve }: Props) {
-  const probability = useRiskStore((s) => s.probabilities[def.id]);
+  const stored = useRiskStore((s) => s.probabilities[def.id]);
+  const override = useProbabilityOverride();
+  const probability = override?.[def.id] ?? stored;
   const isSelected = useRiskStore((s) => s.selected === def.id);
   const isHovered = useRiskStore((s) => s.hovered === def.id);
+  const dimmed = useRiskStore((s) => s.selected !== null && s.selected !== def.id); // another vessel is in focus
   const select = useRiskStore((s) => s.select);
   const hover = useRiskStore((s) => s.hover);
 
@@ -67,6 +123,7 @@ export default function Artery({ def, curve }: Props) {
         clearcoat: 1, // wet, glossy vessel wall
         envMapIntensity: 1.3,
         clearcoatRoughness: 0.12,
+        transparent: true,
       }),
     []
   );
@@ -96,8 +153,9 @@ export default function Artery({ def, curve }: Props) {
     material.emissive.lerp(target, k);
     // High-risk vessels breathe with a slow glow so the eye is drawn to them first.
     const pulse = probability >= 0.65 ? 0.14 * (0.5 + 0.5 * Math.sin(clock.elapsedTime * 2.6)) : 0;
-    const glow = (isSelected ? 0.75 : isHovered ? 0.5 : 0.18) + pulse;
+    const glow = dimmed ? 0.05 : (isSelected ? 0.75 : isHovered ? 0.5 : 0.18) + pulse;
     material.emissiveIntensity = THREE.MathUtils.lerp(material.emissiveIntensity, glow, k);
+    material.opacity = THREE.MathUtils.lerp(material.opacity, dimmed ? 0.35 : 1, k);
   });
 
   const onOver = (e: ThreeEvent<PointerEvent>) => {
@@ -125,20 +183,15 @@ export default function Artery({ def, curve }: Props) {
         <sphereGeometry args={[VISIBLE_RADIUS * TAPER_END, 16, 12]} />
       </mesh>
 
+      <BloodFlow curve={curve} probability={probability} dimmed={dimmed} />
+      {probability >= 0.5 && !dimmed && <Hotspot position={anchor} probability={probability} />}
+
       {/* Invisible fat copy: it only exists to receive pointer events. */}
       <mesh geometry={hit} onPointerOver={onOver} onPointerOut={onOut} onClick={onClick}>
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
 
-      <ArteryLabel
-        anchor={anchor}
-        name={def.plain}
-        probability={probability}
-        selected={isSelected}
-        hovered={isHovered}
-        onSelect={() => select(isSelected ? null : def.id)}
-        onHover={(over) => hover(over ? def.id : null)}
-      />
+      <LabelAnchor id={def.id} position={anchor} />
     </group>
   );
 }

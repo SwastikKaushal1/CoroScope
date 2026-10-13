@@ -156,7 +156,7 @@ Coroscope/
 │       ├── ml/                      preprocessing, training, evaluation
 │       └── models/                  trained models, metrics, presets
 ├── data/z_alizadeh_sani.csv         dataset (CC BY 4.0)
-├── docs/                            technical documentation, demo script
+├── docs/DOCUMENTATION.md            technical write-up (≤ 6 pages)
 ├── scripts/                         helper scripts
 └── compose.yaml                     one-command run
 ```

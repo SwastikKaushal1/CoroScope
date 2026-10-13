@@ -19,7 +19,7 @@ No login. Nothing stored. Every prediction comes with its reasons.
 
 > ⚠️ **For education and decision support only.** Coroscope is not a medical device and not a diagnosis. It does not replace angiography, CT angiography or a doctor's judgement. The 3D heart is a generic model, not a scan of the patient.
 
-**🎬 Demo video:** _link coming soon_
+**🎬 Demo video:** [watch on YouTube](https://youtu.be/09PCsBm1R-I) (9 min)
 
 [Run it](#-run-it) · [How it works](#-how-it-works) · [How accurate is it](#-how-accurate-is-it) · [Report a bug](../../issues)
 

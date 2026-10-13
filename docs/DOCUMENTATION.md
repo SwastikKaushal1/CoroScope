@@ -16,7 +16,7 @@ The whole stack starts with one command (`docker compose up --watch`), and sourc
 
 ## 2. Dataset and preprocessing
 
-**Source.** The extension of the Z-Alizadeh Sani dataset (UCI, CC BY 4.0): 303 patients and 59 columns. Of these, 55 are input features covering demographics, history, examination, ECG, laboratory and echocardiography. The other 4 are targets: `LAD`, `LCX`, `RCA` (Stenotic/Normal) and `Cath` (CAD/Normal).
+**Source.** The extension of the Z-Alizadeh Sani dataset (Mendeley Data, doi:10.17632/bgf5czvpg2.1, CC BY 4.0), which adds per-artery labels to the original UCI dataset: 303 patients and 59 columns. Of these, 55 are input features covering demographics, history, examination, ECG, laboratory and echocardiography. The other 4 are targets: `LAD`, `LCX`, `RCA` (Stenotic/Normal) and `Cath` (CAD/Normal).
 
 | Target | Positive | Negative | Prevalence |
 |---|---|---|---|
@@ -213,9 +213,9 @@ docker compose exec api python -m pytest -q              # tests
 
 ## 10. References and credits
 
-- Alizadehsani R. et al. *Extension of Z-Alizadeh Sani dataset*. UCI Machine Learning Repository (CC BY 4.0).
+- Alizadehsani R. *Extention of Z-Alizadeh Sani dataset*. Mendeley Data, V1, 2017. doi:10.17632/bgf5czvpg2.1 (CC BY 4.0). Original: Z-Alizadeh Sani, UCI Machine Learning Repository, doi:10.24432/C5Q31T.
 - Lundberg S. M. and Lee S.-I. (2017). *A Unified Approach to Interpreting Model Predictions*. NeurIPS.
 - Platt J. (1999). *Probabilistic outputs for support vector machines*. Youden W. J. (1950). *Index for rating diagnostic tests*.
 - WHO. *Cardiovascular diseases fact sheet*: 17.9 million deaths per year, 32% of global deaths.
 - Software: scikit-learn, XGBoost, SHAP, FastAPI, Next.js, three.js, React Three Fiber, drei, Recharts, Zustand.
-- 3D heart model: see README §12.
+- 3D heart model: "Human Heart 3D Model" by Sourav Pan (Biology Notes Online), NIH 3D entry 3DPX-022787, CC0 1.0.

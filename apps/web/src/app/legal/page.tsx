@@ -22,7 +22,7 @@ export default function LegalPage() {
         <p className="mt-3">The models were trained on 303 patients from a single centre (the Z-Alizadeh Sani dataset) and have not been externally validated. The 3D heart is a generic anatomical model, not a reconstruction of the patient&rsquo;s anatomy.</p>
 
         <h2 className="mt-10 text-lg font-medium text-ink">Data &amp; asset credits</h2>
-        <p className="mt-3">Z-Alizadeh Sani dataset, UCI Machine Learning Repository, licensed CC BY 4.0. See the project README for the 3D model credit and all open-source licences.</p>
+        <p className="mt-3">Extension of the Z-Alizadeh Sani dataset (R. Alizadehsani, Mendeley Data, 2017, doi:10.17632/bgf5czvpg2.1), licensed CC BY 4.0. 3D heart: &ldquo;Human Heart 3D Model&rdquo; by Sourav Pan (Biology Notes Online), NIH 3D entry 3DPX-022787, CC0 1.0 Public Domain. Open-source software licences are listed in the project README.</p>
       </article>
       <SiteFooter />
     </main>

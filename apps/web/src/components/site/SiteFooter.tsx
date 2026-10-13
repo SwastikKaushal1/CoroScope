@@ -18,7 +18,7 @@ export default function SiteFooter() {
         </nav>
         <p className="text-xs leading-5 text-ink-3">
           For education and decision support only. Not a diagnosis, and not a substitute for formal diagnostic imaging or a
-          doctor&rsquo;s judgement. Models trained on the Z-Alizadeh Sani dataset (UCI, CC BY 4.0, 303 patients).
+          doctor&rsquo;s judgement. Models trained on the extended Z-Alizadeh Sani dataset (Mendeley Data, CC BY 4.0, 303 patients).
           <span className="mt-3 block">© 2026 Coroscope · Multimodal AI Hackathon 2026 · Track A</span>
         </p>
       </div>

@@ -1,0 +1,28 @@
+# Builds the API's production image and pushes it to Docker Hub, for hosts that pull a
+# container image (e.g. Zoho Catalyst AppSail custom runtime).
+# Needs repo secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN (a Docker Hub access token).
+name: API image
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/api/**", ".github/workflows/api-image.yml"]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          target: prod
+          platforms: linux/amd64
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/coroscope-api:latest

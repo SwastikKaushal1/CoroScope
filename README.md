@@ -1,12 +1,8 @@
 # 🫀 Coroscope
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](LICENSE)
-![Next.js](https://img.shields.io/badge/Next.js-16-black)
-![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688)
-![scikit-learn](https://img.shields.io/badge/scikit--learn-SHAP-F7931E)
-![Three.js](https://img.shields.io/badge/React%20Three%20Fiber-3D-000000)
-![Track](https://img.shields.io/badge/Track%20A-Cardiovascular%20Risk-b91c1c)
-
+[![Live demo](https://img.shields.io/website?url=https%3A%2F%2Fcoroscope.onslate.in&label=live%20demo&up_message=online&down_message=offline)](https://coroscope.onslate.in)
+[![API](https://img.shields.io/website?url=https%3A%2F%2Fcoroscope.onslate.in%2Fapi%2Fhealth&label=API&up_message=online&down_message=offline)](https://coroscope.onslate.in/api/health)
 ### See where your heart may be at risk, and why. In about 30 seconds.
 
 Coroscope predicts coronary artery disease and the chance of narrowing in each of the three main heart arteries (LAD, LCX and RCA). It paints every artery green, amber or red on an interactive 3D heart and explains each result in plain words.
@@ -19,7 +15,7 @@ No login. Nothing stored. Every prediction comes with its reasons.
 
 > ⚠️ **For education and decision support only.** Coroscope is not a medical device and not a diagnosis. It does not replace angiography, CT angiography or a doctor's judgement. The 3D heart is a generic model, not a scan of the patient.
 
-**🎬 Demo video:** [watch on YouTube](https://youtu.be/09PCsBm1R-I) (9 min)
++ **🌐 Live demo:** [coroscope.onslate.in](https://coroscope.onslate.in) · **🎬 Demo video:** [watch on YouTube](https://youtu.be/09PCsBm1R-I) 
 
 [Run it](#-run-it) · [How it works](#-how-it-works) · [How accurate is it](#-how-accurate-is-it) · [Report a bug](../../issues)
 
